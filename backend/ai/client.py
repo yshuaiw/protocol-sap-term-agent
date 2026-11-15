@@ -1,6 +1,7 @@
 """Bounded Groq requests. Never expose vendor error bodies, keys or raw HTTP exceptions."""
 import hashlib
 import json
+import re
 import time
 from pathlib import Path
 
@@ -31,6 +32,54 @@ STRICT_MODELS = {'openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b'
 
 class ModelError(ValueError):
     pass
+
+
+def provider_error(response, stage, model, api_key):
+    """Map provider details to local messages; never echo arbitrary response text."""
+    try:
+        error = response.json().get('error', {})
+    except (ValueError, AttributeError):
+        error = {}
+    if not isinstance(error, dict):
+        error = {}
+    code = error.get('code')
+    message = error.get('message', '')
+    message = message.lower() if isinstance(message, str) else ''
+    reasons = {
+        'invalid_json_schema': 'The provider rejected the output schema.',
+        'json_validate_failed': 'Generated output failed provider JSON/schema validation.',
+        'model_not_found': 'The model is unavailable or this account lacks access.',
+        'model_decommissioned': 'The configured model was retired; select an available model.',
+        'context_length_exceeded': 'The request exceeds the model context limit; reduce the document batch size.',
+        'invalid_api_key': 'The API key was rejected; check local credentials.',
+        'rate_limit_exceeded': 'The account/model rate limit was reached; wait before retrying.',
+        'insufficient_quota': 'The account quota is exhausted; check the provider account.',
+    }
+    known_code = code if isinstance(code, str) and code in reasons and code != api_key else None
+    reason = reasons.get(known_code, {
+        400: 'The provider rejected the request; this status alone does not establish a credential or quota problem.',
+        401: 'Authentication failed; check local credentials.',
+        403: 'Access was denied; check account/model permissions.',
+        404: 'The endpoint or model is unavailable.',
+        413: 'The request is too large.',
+        429: 'A rate or quota limit was reached; check the provider account.',
+    }.get(response.status_code, 'The provider could not complete this request.'))
+    if not known_code:
+        if 'schema' in message:
+            reason = 'The provider rejected the output schema or generated output; inspect schema compatibility.'
+        elif 'image' in message and any(word in message for word in ('support', 'invalid', 'limit')):
+            reason = 'The provider rejected image input; check vision-model support and image limits.'
+    # Only predefined parameter names/keywords are exposed, never source text or failed_generation.
+    fields = ('response_format', 'max_completion_tokens', 'reasoning_format', 'include_reasoning',
+              'image_url', 'minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum',
+              'additionalProperties', 'required', 'strict')
+    hints = [field for field in fields if re.search(r'\b' + re.escape(field.lower()) + r'\b', message)]
+    metadata = (' Code: ' + known_code + '.') if known_code else ''
+    if hints:
+        metadata += ' Referenced request fields: ' + ', '.join(hints) + '.'
+    safe_model = model if re.fullmatch(r'[A-Za-z0-9_./-]{1,100}', model) and api_key not in model else '[configured model]'
+    return ModelError(f'Groq request failed (HTTP {response.status_code}; stage={stage}; model={safe_model}). '
+                      + reason + metadata + ' Raw provider content withheld. No rule fallback was used.')
 
 
 class GroqClient:
@@ -89,7 +138,7 @@ class GroqClient:
                     time.sleep(.25)
                     continue
                 if response.status_code != 200:
-                    raise ModelError(f'Groq request failed (HTTP {response.status_code}); check quota, model access or credentials. No rule fallback was used.')
+                    raise provider_error(response, stage, model, settings.api_key)
                 break
         try:
             data = response.json()
