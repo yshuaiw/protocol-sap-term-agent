@@ -127,18 +127,36 @@ class GroqClient:
                 {'role': 'user', 'content': user_content if images else text}],
                 'response_format': response_format, 'max_completion_tokens': settings.max_output_tokens}
         started = time.monotonic()
+        format_recovery, transient_retry = False, False
+        request_attempts = 0
         with httpx.Client(base_url='https://api.groq.com/openai/v1', timeout=90, trust_env=False,
                           transport=self.transport, follow_redirects=False) as client:
-            for attempt in range(2):
+            # At most one format recovery and one transient retry: three HTTP attempts total.
+            while True:
+                request_attempts += 1
                 try:
                     response = client.post('/chat/completions', headers={'Authorization': 'Bearer ' + settings.api_key}, json=body)
                 except httpx.HTTPError:
                     raise ModelError('Groq network/timeout error. Credentials and provider response bodies are withheld.') from None
-                if response.status_code in (429, 500, 502, 503) and attempt == 0:
+                if response.status_code in (429, 500, 502, 503) and not transient_retry:
+                    transient_retry = True
                     time.sleep(.25)
                     continue
+                if response.status_code == 400 and strict and not format_recovery:
+                    try:
+                        error = response.json().get('error', {})
+                    except (ValueError, AttributeError):
+                        error = {}
+                    if isinstance(error, dict) and error.get('code') == 'json_validate_failed':
+                        # Same model, full input and schema prompt. Local/evidence validation still mandatory.
+                        body['response_format'] = {'type': 'json_object'}
+                        format_recovery = True
+                        continue
                 if response.status_code != 200:
-                    raise provider_error(response, stage, model, settings.api_key)
+                    error = provider_error(response, stage, model, settings.api_key)
+                    if format_recovery:
+                        raise ModelError(str(error) + ' JSON format recovery was attempted once.')
+                    raise error
                 break
         try:
             data = response.json()
@@ -146,12 +164,16 @@ class GroqClient:
             if choice.get('finish_reason') != 'stop':
                 raise ModelError('Model output was truncated or refused; no partial response was accepted.')
             result = schema.model_validate_json(choice['message']['content'])
+        except ModelError:
+            raise
         except (ValueError, KeyError, IndexError, TypeError):
             raise ModelError('Model response failed JSON/schema validation; no partial response or rule fallback was accepted.') from None
         usage = {k: v for k, v in data.get('usage', {}).items()
                  if k in ('prompt_tokens', 'completion_tokens', 'total_tokens') and isinstance(v, int)}
         self.records.append({'stage': stage, 'model': model, 'request_hash': digest, 'cached': False,
-                             'usage': usage, 'simulation': simulation, 'elapsed_seconds': round(time.monotonic() - started, 3)})
+                             'usage': usage, 'simulation': simulation, 'response_format': body['response_format']['type'],
+                             'format_recovery': format_recovery, 'request_attempts': request_attempts,
+                             'elapsed_seconds': round(time.monotonic() - started, 3)})
         if cache:
             self._pending_cache = (cache, result.model_dump_json())
         return result.model_dump()

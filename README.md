@@ -51,6 +51,8 @@ The **explicit rule baseline** remains separately labeled for comparison and mak
 
 Metadata records model IDs, request hashes, stage, cache use and reported token usage. `TERM_AGENT_MAX_CALLS` bounds operations; `TERM_AGENT_CHUNK_CHARS` controls batch size. Evidence-validated responses may be reused after failure. Free-tier limits can interrupt runs; partial work is not silently marked complete.
 
+For HTTP 400 `json_validate_failed` from strict structured output, the adapter retries once with the same model and full input in JSON-object mode. Local schema and exact-source evidence validation remain required; a second failure stops the operation. Records identify format recovery and HTTP attempt count. One transient retry is also allowed (at most three HTTP requests per operation). Reported token usage includes only the successful response, so it is not a complete billing total for rejected attempts. This compatibility path has offline tests; actual provider success still requires live verification.
+
 ## Offline checks
 
 ```powershell
