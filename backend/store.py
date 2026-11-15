@@ -101,6 +101,10 @@ class Store:
             for state in states:
                 if state.get('schema') != 1 or not isinstance(state.get('revision'), int) or state['revision'] < 1:
                     raise ValueError('Invalid project snapshot.')
+                if not isinstance(state.get('name'), str) or not 1 <= len(state['name']) <= 200:
+                    raise ValueError('Project snapshot needs a valid name.')
+                if not isinstance(state.get('version_note'), str) or not isinstance(state.get('updated'), str):
+                    raise ValueError('Project snapshot is missing provenance fields.')
                 for field in ('documents', 'concepts', 'mentions', 'plans', 'exports', 'history'):
                     if not isinstance(state.get(field), list):
                         raise ValueError('Invalid project snapshot fields.')

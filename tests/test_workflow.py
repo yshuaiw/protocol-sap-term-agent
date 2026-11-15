@@ -230,6 +230,24 @@ def test_archive_path_traversal_rejected(client):
     assert r.status_code == 400 and 'Unsafe' in r.text
 
 
+def test_invalid_bundle_does_not_leave_a_broken_project(client):
+    p = create(client)
+    original = main.store.bundle(p['id'])
+    data = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(data, 'w') as target:
+        for item in source.infolist():
+            raw = source.read(item)
+            if item.filename == 'project.json':
+                state = json.loads(raw)
+                del state['name']
+                raw = json.dumps(state).encode()
+            target.writestr(item.filename, raw)
+    before = client.get('/api/projects').json()
+    r = client.post('/api/bundles', files={'file': ('invalid.zip', data.getvalue())})
+    assert r.status_code == 400
+    assert client.get('/api/projects').json() == before
+
+
 def test_concurrent_edit_guard_and_tampered_source(client):
     p = create(client)
     current, _ = confirm(client, p)
