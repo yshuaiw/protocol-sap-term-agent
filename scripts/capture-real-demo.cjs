@@ -16,7 +16,7 @@ const fs=require('node:fs');
  await page.locator('.term').first().click();
  await page.screenshot({path:'output/screenshots/09-real-register.png',fullPage:true});
  await page.getByRole('button',{name:'Plan replacement',exact:true}).click();
- await page.getByRole('heading',{name:'Verified exports'}).waitFor();
+ await page.getByRole('heading',{name:'Text-verified exports'}).waitFor();
  await page.screenshot({path:'output/screenshots/10-real-reviewed-exports.png',fullPage:true});
  await page.getByRole('button',{name:'Documents & coverage',exact:true}).click();
  await page.screenshot({path:'output/screenshots/11-real-coverage.png',fullPage:true});

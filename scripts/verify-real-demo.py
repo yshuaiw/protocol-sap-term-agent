@@ -29,7 +29,7 @@ preserved = next(m for m in p['mentions'] if m['concept_id'] == concept['id'] an
 p = request('PUT', path + '/mentions/' + preserved['id'], json={
     'revision': p['revision'], 'concept_id': concept['id'], 'status': 'preserve'})
 p = request('POST', path + '/plans', json={'revision': p['revision'], 'concept_id': concept['id'],
-    'mappings': {'Full analysis set': 'Main analysis set', 'FAS': 'MAS'}})
+    'mode': 'rules', 'mappings': {'Full analysis set': 'Main analysis set', 'FAS': 'MAS'}})
 plan = p['plans'][-1]
 assert sum(i['proposal'] == 'update' for i in plan['items']) == 4
 assert any(i['proposal'] == 'unresolved' for i in plan['items'])

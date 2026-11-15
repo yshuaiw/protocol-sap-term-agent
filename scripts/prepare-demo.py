@@ -29,6 +29,7 @@ def main():
             'This is a technical terminology demonstration, not a validated clinical revision.')
     p = store.create('DAPA-CKD · original editions · review needed', docs, inputs, note)
     build_registry(p)
+    p['engine'] = 'rules-v1; explicit prepared baseline'
     store.save(p, 'Generated rule candidates on every page of the selected original editions; no manual truth labels or model calls')
     out = root / 'output'
     out.mkdir(exist_ok=True)
