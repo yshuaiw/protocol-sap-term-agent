@@ -11,7 +11,10 @@ os.environ['GROQ_API_KEY'] = 'offline-fixture-key'
 os.environ['TERM_AGENT_OFFLINE'] = '0'
 
 from backend import main
-from backend.ai import routes
+from backend.ai import routes, settings_routes
+fixture_config = root / "tmp" / "offline-ui-settings"
+fixture_config.mkdir(exist_ok=True)
+settings_routes.ROOT = fixture_config
 from tests.test_ai_offline import fake_client
 from fastapi.routing import APIRoute
 

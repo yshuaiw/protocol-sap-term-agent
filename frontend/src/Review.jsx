@@ -1,0 +1,35 @@
+import React, {useEffect, useState} from 'react';
+import {api} from './api';
+import {projectPath, downloadPath} from './paths';
+import {sourceSlice} from './sourceText';
+const count = (list, key) => list.filter(x => x.proposal === key).length;
+
+export function Review({project:p,run,busy,initialConcept}) {
+  const [cid,setCid]=useState(p.concepts.some(c=>c.id===initialConcept)?initialConcept:p.concepts[0]?.id||''),[mappings,setMappings]=useState({});
+  const [approved,setApproved]=useState([]),[ack,setAck]=useState(false),[filter,setFilter]=useState('all');
+  const [mode,setMode]=useState('ai'),[requestText,setRequestText]=useState('');
+  const concept=p.concepts.find(c=>c.id===cid);
+  const plan=p.plans.at(-1),active=plan&&!plan.applied&&plan.base_revision===p.revision;
+
+  useEffect(()=>{setApproved([]);setAck(false);},[plan?.id]);
+  async function generate(e){e.preventDefault();await run(()=>api(projectPath(p)+'/plans','POST',{
+    revision:p.revision,concept_id:cid,mode,mappings:Object.fromEntries(Object.entries(mappings).filter(([,v])=>v.trim()))
+  }),'Preview saved. Select the individual updates you approve.');}
+  async function apply(){await run(()=>api(projectPath(p)+`/plans/${plan.id}/apply`,'POST',{
+    revision:p.revision,approved_ids:approved,coverage_acknowledged:ack
+  }),'Approved changes applied and both Word copies reread. Download the verification report with the documents.');setApproved([]);setAck(false);}
+  const items=plan?.items.filter(i=>filter==='all'||i.proposal===filter)||[];
+  return <><div className="section-header"><div><h1>Replacement review</h1><p className="muted">Map each form explicitly. Approval applies only to selected occurrences.</p></div></div>
+    {!p.concepts.length&&<div className="callout">Generate and review the AI register before planning a replacement.</div>}
+    <section className="replacement-form"><label>Optional natural-language naming request<textarea value={requestText} onChange={e=>setRequestText(e.target.value)} maxLength={3000}/></label><button disabled={busy||!requestText.trim()||!p.concepts.length} onClick={()=>run(()=>api(projectPath(p)+'/ai/interpret','POST',{revision:p.revision,text:requestText}),'AI request interpretation saved for your review.')}>Interpret request with AI</button>
+    {p.last_interpretation&&<div><p>{p.last_interpretation.reason}</p><p>{p.last_interpretation.semantic_risk?'Possible meaning/design change; review separately.':'Proposed naming mappings; not approved.'}</p><pre>{p.last_interpretation.mappings.map(m=>m.old+' → '+m.new).join('\n')}</pre><button disabled={busy||p.last_interpretation.semantic_risk} onClick={()=>{setCid(p.last_interpretation.concept_id);setMappings(Object.fromEntries(p.last_interpretation.mappings.map(m=>[m.old,m.new])));}}>Use proposed mappings</button></div>}</section>
+    <form className="replacement-form" onSubmit={generate}><label>Review engine<select aria-label="Review engine" value={mode} onChange={e=>setMode(e.target.value)}><option value="ai">Configured AI semantic review</option><option value="rules">Explicit rule baseline</option></select></label><label>Concept<select aria-label="Concept" value={cid} onChange={e=>{setCid(e.target.value);setMappings({});}}>{p.concepts.map(c=><option key={c.id} value={c.id}>{c.name} · {c.confirmed?'confirmed':'unconfirmed'}</option>)}</select></label>{concept&&<div className="mapping-grid">{[...new Set([concept.name,...concept.aliases])].map(form=><label key={form}>Replace “{form}” with<input value={mappings[form]||''} placeholder="Leave blank to preserve this form" onChange={e=>setMappings({...mappings,[form]:e.target.value})} maxLength={200}/></label>)}</div>}<button className="primary" disabled={busy||!Object.values(mappings).some(x=>x.trim())}>Generate preview</button></form>
+    {plan&&<><div className="section-header"><h2>Proposed occurrences</h2><span className="muted">{count(plan.items,'update')} updates · {count(plan.items,'preserve')} preserved · {count(plan.items,'unresolved')} unresolved</span></div>{!active&&<div className="callout">{plan.applied?'This preview has been applied. Generate a new preview for further changes.':'This preview is stale after a project change. Regenerate before approval.'}</div>}
+      <label className="filter-label">Show<select value={filter} onChange={e=>setFilter(e.target.value)}>{['all','update','preserve','unresolved'].map(x=><option key={x}>{x}</option>)}</select></label>
+      <div className="proposal-list">{items.map(i=><article key={i.id} className="proposal"><div className="proposal-check"><input type="checkbox" aria-label={`Approve ${i.role} page ${i.page} occurrence ${i.id}`} disabled={!active||i.proposal!=='update'||busy} checked={approved.includes(i.id)} onChange={e=>setApproved(e.target.checked?[...approved,i.id]:approved.filter(x=>x!==i.id))}/></div><div><div className="occurrence-meta"><strong>{i.role} · {p.documents.find(d=>d.id===i.doc_id)?.format==='docx'?'DOCX':'PDF p'+i.page} · {i.region}</strong><span className={'status '+i.proposal}>{i.proposal}</span><a href={downloadPath(p,`/documents/${i.doc_id}/source`)+`#page=${i.page}`} target="_blank" rel="noreferrer">View source</a></div><p>{sourceSlice(i.context,0,i.start)}<mark>{i.text}</mark>{sourceSlice(i.context,i.end)}</p>{i.proposal==='update'&&<p className="diff"><del>{i.text}</del><span> → </span><ins>{i.new}</ins></p>}<p className="muted">{i.reason}</p></div></article>)}</div>
+      {active&&<div className="approval-bar"><label className="checkbox"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>I reviewed coverage limits. Word contains reconstructed editable text and unchanged source images; image text, complex table semantics and layout are not certified.</label><button className="primary" disabled={busy||!ack||!approved.length} onClick={apply}>Apply {approved.length} approved changes & export</button></div>}
+    </>}
+    {p.semantic_audits?.at(-1)&&<div className="callout"><strong>Latest advisory semantic audit</strong>{p.semantic_audits.at(-1).findings.length?p.semantic_audits.at(-1).findings.map((f,i)=><p key={i}>{f.concern}: {f.evidence}</p>):<p>No concerns returned by the model. This is not proof of semantic correctness.</p>}</div>}
+    {p.exports.length>0&&<div className="export-panel"><h2>Text-verified exports</h2>{p.exports.slice().reverse().map((x,i)=><div className="export-row" key={x.id}><button disabled={busy} onClick={()=>run(()=>api(projectPath(p)+'/ai/audit','POST',{revision:p.revision,export_id:x.id}),'Advisory semantic audit saved.')}>Ask AI to review meaning</button><strong>{i===0?'Latest export':`Export ${p.exports.length-i}`} · {x.verification.approved_changes.length} approved changes</strong><div className="actions">{x.files.map(file=><a key={file} className="button" href={downloadPath(p,`/exports/${x.id}/${file}`)}>{file}</a>)}</div><p className="muted">Parsed text reread: {x.verification.documents.map(d=>`${d.role} ${d.blocks_reread}/${d.blocks_expected}`).join(' · ')}. Semantic correctness and visual fidelity require review.</p></div>)}</div>}
+  </>;
+}
