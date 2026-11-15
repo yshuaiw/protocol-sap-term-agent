@@ -34,7 +34,8 @@ def update_local(root, selection=None, credential=None):
         value = read_local(root)
         if selection is not None:
             expected = {'provider', 'model', 'vision_provider', 'vision_model', 'pdf_mode'}
-            if set(selection) != expected or any(selection[p] not in PROVIDERS for p in ('provider', 'vision_provider')):
+            if set(selection) != expected or any(not isinstance(selection[p], str) or selection[p] not in PROVIDERS
+                                                   for p in ('provider', 'vision_provider')):
                 raise ValueError('Select a supported text and visual provider.')
             if not all(valid_model(selection[p]) for p in ('model', 'vision_model')):
                 raise ValueError('Enter valid model IDs for both tasks.')
@@ -54,7 +55,10 @@ def update_local(root, selection=None, credential=None):
                                     not key.isascii() or any(c.isspace() or ord(c) < 33 for c in key)):
                 raise ValueError('Invalid key format; key contents withheld.')
             value['credentials'][provider] = key
-        secrets = [k for k in value['credentials'].values() if isinstance(k, str) and k]
+        # Reuse the same credential precedence as Settings.load, including legacy sources.
+        from .config import credentials, local_options
+        effective, _ = credentials(local_options(root), value, root)
+        secrets = [k for k in effective.values() if k]
         if any(k in str(value['selection']) for k in secrets):
             raise ValueError('Credentials cannot be used as model IDs.')
         path = Path(root) / SETTINGS_FILE

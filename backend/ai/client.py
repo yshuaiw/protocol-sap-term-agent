@@ -11,7 +11,7 @@ import httpx
 from pydantic import ValidationError
 
 from .config import Settings
-from .providers import PROVIDERS, ADAPTER_VERSION, STRICT_MODELS, request_spec, response_content
+from .providers import PROVIDERS, ADAPTER_VERSION, request_spec, response_content
 from .diagnostics import rejected_output_summary
 
 SYSTEM = '''You assist a human-reviewed Protocol/SAP terminology maintenance application.
@@ -143,6 +143,7 @@ class ModelClient:
                 result = schema.model_validate_json(cache.read_text(encoding='utf-8'))
             except (ValidationError, ValueError):
                 raise ModelError('Invalid local model cache; remove the affected ai-cache file and retry.') from None
+            self.check_credentials(result)
             self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': digest, 'cached': True, 'usage': {}, 'simulation': simulation})
             return result.model_dump()
         prompt = SYSTEM + '\nTASK: ' + TASKS[stage] + '\nJSON schema: ' + json.dumps(schema.model_json_schema())
@@ -200,6 +201,7 @@ class ModelClient:
             if any(secret and secret in content for secret in (settings.api_key, settings.visual_key())):
                 raise ModelError('Model output contained credential material and was rejected; contents withheld.')
             result = schema.model_validate_json(content)
+            self.check_credentials(result)
         except ModelError:
             raise
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
@@ -213,6 +215,11 @@ class ModelClient:
         if cache:
             self._pending_cache = (cache, result.model_dump_json())
         return result.model_dump()
+
+    def check_credentials(self, result):
+        decoded = result.model_dump_json()
+        if any(secret and secret in decoded for secret in (self.settings.api_key, self.settings.visual_key())):
+            raise ModelError('Model output contained credential material and was rejected; contents withheld.')
 
     def accept(self):
         """Cache only after the caller has also checked source evidence and coverage IDs."""

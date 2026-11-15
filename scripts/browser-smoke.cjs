@@ -6,7 +6,8 @@ const assert = require('node:assert/strict');
 
 (async()=>{
   const base = process.env.DEMO_URL || 'http://127.0.0.1:8765';
-  const out = path.resolve('output/screenshots'); fs.mkdirSync(out,{recursive:true});
+  const artifacts = path.resolve(process.env.BROWSER_OUTPUT_DIR || ('output/browser-smoke-' + Date.now()));
+  const out = path.join(artifacts,'screenshots'); fs.mkdirSync(out,{recursive:true});
   const browser = await chromium.launch({headless:true, channel:process.env.BROWSER_CHANNEL || 'msedge'});
   const page = await browser.newPage({viewport:{width:1440,height:1000},acceptDownloads:true});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
@@ -42,11 +43,11 @@ const assert = require('node:assert/strict');
   await page.getByRole('button',{name:'Apply 2 approved changes & export'}).click();
   await page.getByRole('heading',{name:'Text-verified exports'}).waitFor({timeout:90000});
   const download = page.waitForEvent('download');await page.getByRole('link',{name:'Protocol_revised.docx',exact:true}).click();
-  await (await download).saveAs(path.resolve('output/browser-Protocol_revised.docx'));await shot('05-verified-exports');
+  await (await download).saveAs(path.join(artifacts,'Protocol_revised.docx'));await shot('05-verified-exports');
   await page.getByRole('button',{name:'Documents & coverage',exact:true}).click();await shot('06-coverage');
   await page.getByRole('button',{name:'History & transfer',exact:true}).click();
   const bundleDownload=page.waitForEvent('download');await page.getByRole('link',{name:'Export project bundle'}).click();
-  const bundle=path.resolve('output/browser-project.zip');await(await bundleDownload).saveAs(bundle);await shot('07-history');
+  const bundle=path.join(artifacts,'project.zip');await(await bundleDownload).saveAs(bundle);await shot('07-history');
   await page.reload();await page.getByRole('button').filter({has:page.locator('strong',{hasText:projectName})}).click();
   await page.getByRole('heading',{name:'Terminology register',exact:true}).waitFor();
   await page.getByLabel('Open project bundle').setInputFiles(bundle);

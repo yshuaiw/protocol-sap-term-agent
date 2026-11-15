@@ -37,6 +37,27 @@ def read_key(options, root):
     return raw if isinstance(raw, str) and len(raw) <= 512 and not any(c.isspace() for c in raw) else ''
 
 
+def credentials(env, local, root):
+    keys, status = {}, {}
+    for pid, info in PROVIDERS.items():
+        managed = pid in local['credentials']
+        key = local['credentials'].get(pid) if managed else (read_key(env, root) if pid == 'groq' else
+              env.get(info['key_env'], env.get('GEMINI_API_KEY', '') if pid == 'google' else ''))
+        if key is not None and not isinstance(key, str):
+            raise ValueError('Invalid local credential configuration; contents withheld.')
+        keys[pid] = key or ''
+        status[pid] = {'key_configured': bool(key), 'key_source': 'saved locally' if managed and key else
+                      'disabled locally' if managed else 'legacy file/environment' if key else 'not configured'}
+    return keys, status
+
+
+def number(env, key, default, low, high):
+    try:
+        return max(low, min(high, int(env.get(key, str(default)))))
+    except (ValueError, TypeError):
+        raise ValueError('Invalid numeric API setting; configuration contents withheld.') from None
+
+
 @dataclass
 class Settings:
     api_key: str = field(default='', repr=False)
@@ -63,16 +84,7 @@ class Settings:
         provider, visual = selected.get('provider', 'groq'), selected.get('vision_provider', 'groq')
         if provider not in PROVIDERS or visual not in PROVIDERS:
             raise ValueError('Unsupported provider in local API settings.')
-        keys, status = {}, {}
-        for pid, info in PROVIDERS.items():
-            managed = pid in local['credentials']
-            key = local['credentials'].get(pid) if managed else (read_key(env, root) if pid == 'groq' else
-                  env.get(info['key_env'], env.get('GEMINI_API_KEY', '') if pid == 'google' else ''))
-            if key is not None and not isinstance(key, str):
-                raise ValueError('Invalid local credential configuration; contents withheld.')
-            keys[pid] = key or ''
-            status[pid] = {'key_configured': bool(key), 'key_source': 'saved locally' if managed and key else
-                          'disabled locally' if managed else 'legacy file/environment' if key else 'not configured'}
+        keys, status = credentials(env, local, root)
         mode = selected.get('pdf_mode', env.get('TERM_AGENT_PDF_MODE', 'vision'))
         if mode not in ('vision', 'text', 'native'):
             raise ValueError('TERM_AGENT_PDF_MODE must be vision, text or native.')
@@ -83,11 +95,11 @@ class Settings:
         return cls(api_key=keys[provider], model=model, provider=provider, vision_provider=visual,
                    vision_api_key=keys[visual], key_status=status, vision_model=vision_model, pdf_mode=mode,
                    offline=env.get('TERM_AGENT_OFFLINE', '0') == '1',
-                   max_calls=max(1, min(1000, int(env.get('TERM_AGENT_MAX_CALLS', '500')))),
-                   chunk_chars=max(1000, min(15000, int(env.get('TERM_AGENT_CHUNK_CHARS', '7000')))),
-                   chunk_units=max(1, min(32, int(env.get('TERM_AGENT_CHUNK_UNITS', '8')))),
-                   link_batch_size=max(1, min(20, int(env.get('TERM_AGENT_LINK_BATCH_SIZE', '8')))),
-                   max_output_tokens=max(512, min(16384, int(env.get('TERM_AGENT_MAX_OUTPUT_TOKENS', '4096')))))
+                   max_calls=number(env, 'TERM_AGENT_MAX_CALLS', 500, 1, 1000),
+                   chunk_chars=number(env, 'TERM_AGENT_CHUNK_CHARS', 7000, 1000, 15000),
+                   chunk_units=number(env, 'TERM_AGENT_CHUNK_UNITS', 8, 1, 32),
+                   link_batch_size=number(env, 'TERM_AGENT_LINK_BATCH_SIZE', 8, 1, 20),
+                   max_output_tokens=number(env, 'TERM_AGENT_MAX_OUTPUT_TOKENS', 4096, 512, 16384))
 
     def public(self):
         return {'provider': self.provider, 'vision_provider': self.vision_provider,
