@@ -4,6 +4,8 @@ Local FastAPI + React workspace for PDF/DOCX document pairs, AI terminology disc
 
 **Version 0.2 has limited live connectivity evidence, not validated full-document AI performance.** On 2026-11-15, two live synthetic discovery probes with GPT-OSS 20B returned HTTP 200 and schema-valid JSON. Full-document processing, vision access, sustained quota and semantic quality remain unverified. Automated tests use scripted responses and label runs as simulated.
 
+Those two probes used the earlier offset-based discovery schema. The current quote-based extraction contract has offline validation only.
+
 ## Windows setup
 
 Use Python 3.12 and Node.js 22.12 or later. From a writable folder:
@@ -55,6 +57,8 @@ Discovery now limits each batch to eight text units (`TERM_AGENT_CHUNK_UNITS`) a
 
 Provider JSON rejections are analyzed in memory for syntax/schema status and validation error types. Only structural summaries enter error messages/history; generated text, arbitrary field names and provider error bodies are withheld. `scripts/diagnose-groq.py` defaults to a dry run; `--live` explicitly sends at most two synthetic probes, not project documents.
 
+Discovery asks the model for exact term text and a distinguishing source quotation, not character counts. The program computes Unicode offsets by matching the quotation exactly within the submitted block range. Missing quotes, ambiguous repeated matches and quotes containing multiple target occurrences fail the run without replacing the register. No case folding, whitespace repair, approximate matching or first-match guessing is used. Identical spellings are still linked only through the separate AI semantic-linking stage and human review.
+
 For HTTP 400 `json_validate_failed` from strict structured output, the adapter retries once with the same model and full input in JSON-object mode. Local schema and exact-source evidence validation remain required; a second failure stops the operation. Records identify format recovery and HTTP attempt count. One transient retry is also allowed (at most three HTTP requests per operation). Reported token usage includes only the successful response, so it is not a complete billing total for rejected attempts. This compatibility path has offline tests; actual provider success still requires live verification.
 
 ## Offline checks
@@ -62,6 +66,7 @@ For HTTP 400 `json_validate_failed` from strict structured output, the adapter r
 ```powershell
 .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 .venv/Scripts/python.exe -m pytest -q
+node --test frontend/tests/source-text.test.js
 cd frontend
 node node_modules/vite/bin/vite.js build
 ```

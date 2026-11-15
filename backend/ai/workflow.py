@@ -42,6 +42,29 @@ def document_chunks(documents, budget, max_units=8):
         yield pending
 
 
+def locate_evidence(text, ranges, mention):
+    """Compute Unicode offsets from exact, uniquely identifying model quotations."""
+    quote, term = mention['evidence'], mention['text']
+    relative = []
+    position = quote.find(term)
+    while position >= 0:
+        relative.append(position)
+        position = quote.find(term, position + 1)
+    if not relative:
+        raise ModelError('Discovery evidence does not contain the proposed term exactly. No approximate match was accepted.')
+    anchors = set()
+    for start, end in ranges:
+        position = text.find(quote, start, end)
+        while position >= 0:
+            anchors.update((position + offset, position + offset + len(term)) for offset in relative)
+            if len(anchors) > 1:
+                raise ModelError('Discovery evidence is ambiguous within its submitted text block; a unique context quotation is required.')
+            position = text.find(quote, position + 1, end)
+    if not anchors:
+        raise ModelError('Discovery evidence quotation is absent from its submitted text range. No approximate match was accepted.')
+    return next(iter(anchors))
+
+
 def generate_registry(project, client, run):
     chunks = list(document_chunks(project['documents'], client.settings.chunk_chars, client.settings.chunk_units))
     lookup = {b['id']: (d, b) for d in project['documents'] for b in d['blocks']}
@@ -53,15 +76,14 @@ def generate_registry(project, client, run):
         for unit in units:
             allowed.setdefault(unit['block_id'], []).append((unit['start'], unit['end']))
         for item in response['mentions']:
-            bid, start, end = item['block_id'], item['start'], item['end']
-            if bid not in allowed or not any(a <= start < end <= b for a, b in allowed[bid]):
-                raise ModelError('Discovery returned an unknown block or out-of-chunk anchor.')
+            bid = item['block_id']
+            if bid not in allowed:
+                raise ModelError('Discovery returned an unknown block outside the supplied chunk.')
             doc, block = lookup[bid]
-            if block['text'][start:end] != item['text']:
-                raise ModelError('Discovery evidence does not match the original text at its anchor.')
+            start, end = locate_evidence(block['text'], allowed[bid], item)
             key = (bid, start, end)
             if key not in found:
-                found[key] = {**item, 'id': stable_id(bid, start, end, item['text']),
+                found[key] = {**item, 'start': start, 'end': end, 'id': stable_id(bid, start, end, item['text']),
                               'role': doc['role'], 'doc_id': doc['id'], 'page': block['page'],
                               'region': block['region'], 'context': block['text'],
                               'evidence_kind': block.get('evidence_kind', 'native_text')}

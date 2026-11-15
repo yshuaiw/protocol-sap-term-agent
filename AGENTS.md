@@ -14,3 +14,4 @@
 | Development rule | Verification guard |
 |---|---|
 | Bound discovery output pressure without dropping source spans: count serialized context/metadata, cap units per batch, and keep GPT-OSS discovery reasoning explicit. | `tests/test_discovery_budget.py`; real-provider success must be reported separately from simulated tests. |
+| Compute discovery character offsets from unique exact quotations within submitted ranges; never delegate character counts to the model or guess ambiguous matches. Keep browser evidence slices in the same Unicode coordinates. | `tests/test_discovery_anchors.py` and `frontend/tests/source-text.test.js`, including Unicode, repeated terms, overlapping chunks and rejected invented/out-of-range evidence. |

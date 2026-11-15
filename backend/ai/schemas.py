@@ -11,9 +11,8 @@ Category = Literal['treatment', 'visit', 'endpoint', 'label']
 
 class ExtractedMention(Strict):
     block_id: str
-    start: int = Field(ge=0)
-    end: int = Field(ge=1)
     text: str = Field(min_length=1, max_length=300)
+    evidence: str = Field(min_length=1, max_length=2000)
     canonical_name: str = Field(min_length=1, max_length=200)
     category: Category
     definition: str = Field(max_length=1500)

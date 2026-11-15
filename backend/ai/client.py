@@ -20,7 +20,7 @@ Preserve distinct populations, definitions, timepoints and historical references
 Do not treat identical spellings or abbreviations as sufficient proof of concept identity.'''
 
 TASKS = {
- 'discovery': 'Find ALL in-scope term occurrences in the supplied chunks, not only familiar terms. Return exact text and zero-based Python Unicode start/end offsets in their full block text. Use only the supplied block IDs and within the supplied start/end ranges. Include abbreviations and aliases. Keep definitions and reasons to one concise sentence each. Empty mentions is allowed only when no in-scope terms occur.',
+ 'discovery': 'Find ALL in-scope term occurrences in the supplied chunks, not only familiar terms. For each occurrence return its exact text and an evidence quotation copied verbatim from that chunk text. Preserve case, whitespace, punctuation and Unicode in text/evidence; normalize names only in canonical_name. Evidence must include the term exactly once and uniquely identify its occurrence within the supplied block text; use the shortest sufficient surrounding quotation. Repeated spellings may represent different concepts: give each occurrence its own distinguishing quotation. Use only supplied block IDs. Neighboring context helps interpretation but is not an extraction target. Do not calculate character offsets. Include abbreviations and aliases. Keep definitions and reasons to one concise sentence each. Empty mentions is allowed only when no in-scope terms occur.',
  'linking': 'Assign EVERY candidate exactly once to an existing ledger concept ID or a new group_id starting new:. Use evidence/definitions and document role. New groups with identical group_id must have the same category/name. Do not collapse abbreviation collisions. Ambiguous candidates must get their own new group and ambiguous=true. Existing concepts retain their given name/category. Grouping is a suggestion for human review.',
  'rename_review': 'Judge EVERY supplied mention exactly once: update, preserve or unresolved. Only a naming change is allowed. Keep historical quotations and unrelated uses, flag changes to definitions/design rules as semantic_risk=true. Evidence must be an exact substring of the mention context. Do not invent mappings or replacement forms. Respect human preserve/uncertain decisions.',
  'interpretation': 'Interpret the reviewer naming request using ONLY existing concept IDs and forms. Return proposed old/new mappings for explicit human review. If the target is unclear use an empty concept_id and no mappings. Flag anything beyond naming as semantic_risk=true.',
@@ -109,7 +109,7 @@ class GroqClient:
         if len(text) > 100000:
             raise ModelError('Model payload is too large. Reduce batch size; content was not silently truncated.')
         simulation = isinstance(self.transport, httpx.MockTransport)
-        prompt_version = 'discovery-v2' if stage == 'discovery' else 'prompt-v1'
+        prompt_version = 'discovery-v3-quotes' if stage == 'discovery' else 'prompt-v1'
         identity = json.dumps([stage, model, schema.model_json_schema(), payload, images or [], prompt_version, simulation], sort_keys=True)
         digest = hashlib.sha256(identity.encode()).hexdigest()
         cache = self.cache_dir / (digest + '.json') if self.cache_dir else None
