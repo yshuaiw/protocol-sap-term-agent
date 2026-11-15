@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from .client import GroqClient, ModelError
+from .client import ModelClient, ModelError
 from .config import Settings
 from .review import audit_export, interpret_request, suggest_boundaries
 from .vision import enrich_visual_text
@@ -19,7 +19,7 @@ class RunRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     revision: int
     replace_registry: bool = False
-    pdf_mode: Literal['vision', 'text'] | None = None
+    pdf_mode: Literal['vision', 'text', 'native'] | None = None
 
 
 class InterpretRequest(RunRequest):
@@ -33,7 +33,7 @@ class AuditRequest(RunRequest):
 def new_client(pid=None):
     from .. import main
     cache = main.store.folder(pid) / 'ai-cache' if pid else None
-    return GroqClient(Settings.load(), cache_dir=cache)
+    return ModelClient(Settings.load(), cache_dir=cache)
 
 
 def failed_run(pid, run, client):
@@ -43,11 +43,6 @@ def failed_run(pid, run, client):
         run.update(status='failed', finished=now(), calls=list(client.records))
         current.setdefault('ai_runs', []).append(run)
         main.store.save(current, 'AI operation failed; existing document text and register retained')
-
-
-@router.get('/ai/config')
-def config():
-    return Settings.load().public()
 
 
 @router.post('/projects/{pid}/ai/generate')
@@ -63,6 +58,7 @@ def generate(pid: str, request: RunRequest):
     if request.pdf_mode:
         client.settings.pdf_mode = request.pdf_mode
     run = {'id': uid(), 'stage': 'registry_generation', 'started': now(), 'base_revision': request.revision}
+    run['configuration'] = client.settings.provenance()
     try:
         enrich_visual_text(working, main.store.folder(pid), client, run)
         generate_registry(working, client, run)
@@ -93,7 +89,8 @@ def interpret(pid: str, request: InterpretRequest):
     with LOCK:
         main.guard(main.load(pid), request.revision)
         p['last_interpretation'] = {**result, 'id': uid(), 'request': request.text}
-        p.setdefault('ai_runs', []).append({'id': uid(), 'stage': 'interpretation', 'status': 'completed', 'calls': client.records})
+        p.setdefault('ai_runs', []).append({'id': uid(), 'stage': 'interpretation', 'status': 'completed',
+                                          'configuration': client.settings.provenance(), 'calls': client.records})
         return main.store.save(p, 'Interpreted natural-language naming request; proposed mappings require review')
 
 

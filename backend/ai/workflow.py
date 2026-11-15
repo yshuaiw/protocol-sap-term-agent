@@ -183,18 +183,18 @@ def generate_registry(project, client, run):
                 'definition': item['definition'], 'aliases': [], 'confirmed': False,
                 'evidence': f"{candidate['role']} {candidate['page']}: {candidate['context']}",
                 'note': 'Model grouping is uncertain; reviewer association required.' if item['ambiguous'] else
-                        'Model-supported proposal; human evidence review is required.', 'origin': 'groq'})
+                        'Model-supported proposal; human evidence review is required.', 'origin': client.settings.provider})
             if candidate['text'] != concept['name'] and candidate['text'] not in concept['aliases']:
                 concept['aliases'].append(candidate['text'])
             mentions.append({k: candidate[k] for k in ('id', 'doc_id', 'role', 'page', 'region', 'block_id',
                                                       'start', 'end', 'text', 'context', 'evidence_kind')} | {
                 'concept_id': cid, 'candidates': [cid], 'status': 'unresolved', 'manual': False,
                 'model_link_status': 'ambiguous' if item['ambiguous'] else 'supported',
-                'model_reason': item['reason'], 'origin': 'groq'})
+                'model_reason': item['reason'], 'origin': client.settings.provider})
         ledger = [{'id': c['id'], 'name': c['name'], 'category': c['category'], 'definition': c['definition'],
                    'aliases': c['aliases'], 'evidence': c['evidence']} for c in concepts.values()]
         client.accept()
     project['concepts'], project['mentions'] = list(concepts.values()), mentions
-    project['engine'] = 'groq-ai-v1'
+    project['engine'] = client.settings.provider + '-ai-v1'
     run.update(status='completed', concepts=len(concepts), mentions=len(mentions),
                blocks_scanned=len(lookup), coverage_notice='All selected text blocks submitted. Semantic recall is not certified. Visual transcriptions and unsupported media require review.')

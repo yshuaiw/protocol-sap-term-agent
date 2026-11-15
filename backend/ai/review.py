@@ -28,7 +28,8 @@ def review_plan(project, concept_id, mappings, client):
             if item.get('evidence_kind') == 'visual_transcription' and not item.get('manual'):
                 item.update(proposal='unresolved', reason='Verify this visual transcription individually against its source before approval.')
         client.accept()
-    plan['engine'] = 'groq-ai-v1'
+    plan['engine'] = client.settings.provider + '-ai-v1'
+    plan['configuration'] = client.settings.provenance()
     plan['model_calls'] = list(client.records)
     return plan
 
@@ -66,6 +67,7 @@ def audit_export(project, export_id, client):
         notes.append(result['note'])
         client.accept()
     return {'export_id': export_id, 'findings': findings, 'notes': notes,
+            'configuration': client.settings.provenance(),
             'notice': 'Advisory model review, not independent proof of semantic correctness.', 'model_calls': client.records}
 
 

@@ -1,4 +1,5 @@
-"""Bounded Groq requests. Never expose vendor error bodies, keys or raw HTTP exceptions."""
+"""Bounded provider requests. Never expose vendor error bodies, keys or raw HTTP exceptions."""
+import copy
 import hashlib
 import json
 import math
@@ -10,6 +11,7 @@ import httpx
 from pydantic import ValidationError
 
 from .config import Settings
+from .providers import PROVIDERS, ADAPTER_VERSION, STRICT_MODELS, request_spec, response_content
 from .diagnostics import rejected_output_summary
 
 SYSTEM = '''You assist a human-reviewed Protocol/SAP terminology maintenance application.
@@ -30,7 +32,6 @@ TASKS = {
  'boundaries': 'Suggest independent Protocol/SAP document ranges using exact supplied title-page evidence. An embedded statistics chapter alone is NOT an independent SAP. Do not invent a missing SAP or assert version compatibility without explicit evidence.',
  'semantic_audit': 'Review ONLY the supplied before/after changed paragraphs and approved replacements for unintended semantic changes, inconsistent naming, changed definitions or design rules. Findings require an exact after-text quote. This is advisory, not proof of correctness.'
 }
-STRICT_MODELS = {'openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'meta-models/muse-spark-open'}
 
 
 class ModelError(ValueError):
@@ -49,7 +50,7 @@ def retry_delay(response):
     return min(60, max(.25, seconds) + .5)
 
 
-def provider_error(response, stage, model, api_key, schema=None):
+def provider_error(response, stage, model, api_key, schema=None, provider='groq'):
     """Map provider details to local messages; never echo arbitrary response text."""
     try:
         error = response.json().get('error', {})
@@ -96,36 +97,45 @@ def provider_error(response, stage, model, api_key, schema=None):
     if schema is not None and known_code == 'json_validate_failed':
         metadata += ' Rejected output analysis: ' + json.dumps(rejected_output_summary(error, schema)) + '.'
     safe_model = model if re.fullmatch(r'[A-Za-z0-9_./-]{1,100}', model) and api_key not in model else '[configured model]'
-    return ModelError(f'Groq request failed (HTTP {response.status_code}; stage={stage}; model={safe_model}). '
+    return ModelError(f'{PROVIDERS[provider]["name"]} request failed (HTTP {response.status_code}; stage={stage}; model={safe_model}). '
                       + reason + metadata + ' Raw provider content withheld. No rule fallback was used.')
 
 
-class GroqClient:
+class ModelClient:
     def __init__(self, settings=None, transport=None, cache_dir=None):
-        self.settings = settings or Settings.load()
+        self.settings = copy.deepcopy(settings or Settings.load())
         self.transport = transport
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.records = []
         self._pending_cache = None
 
-    def complete(self, stage, payload, schema, images=None):
+    def complete(self, stage, payload, schema, images=None, pdf=None):
         self._pending_cache = None
         settings = self.settings
         if settings.offline:
             raise ModelError('Model requests are disabled by TERM_AGENT_OFFLINE=1.')
-        if not settings.api_key:
-            raise ModelError('Groq key is missing. Save the key in local API.txt or GROQ_API_KEY; never enter it in the browser.')
+        visual = bool(images or pdf)
+        provider = settings.vision_provider if visual else settings.provider
+        if provider not in PROVIDERS:
+            raise ModelError('Unsupported provider; no request made.')
+        key = settings.visual_key() if visual else settings.api_key
+        if not key:
+            raise ModelError(f'{PROVIDERS[provider]["name"]} key is missing. Save a local key in API settings.')
         if stage not in TASKS or len(self.records) >= settings.max_calls:
             raise ModelError('Unknown stage or per-run model call limit reached. No partial run was marked complete.')
-        model = settings.vision_model if images else settings.model
+        model = settings.vision_model if visual else settings.model
         if not model:
-            raise ModelError('A vision model is required for this content; configure GROQ_VISION_MODEL.')
+            raise ModelError('A visual model is required for this content; configure API settings.')
+        if pdf and not PROVIDERS[provider]['native_pdf']:
+            raise ModelError('This adapter does not support native PDF; select a supported provider or processing mode.')
+        if images and not PROVIDERS[provider]['vision']:
+            raise ModelError('This adapter does not support image input; select a visual provider.')
         text = json.dumps(payload, ensure_ascii=False)
         if len(text) > 100000:
             raise ModelError('Model payload is too large. Reduce batch size; content was not silently truncated.')
         simulation = isinstance(self.transport, httpx.MockTransport)
         prompt_version = {'discovery': 'discovery-v5-explicit-terms', 'linking': 'linking-v2-compact-refs'}.get(stage, 'prompt-v1')
-        identity = json.dumps([stage, model, schema.model_json_schema(), payload, images or [], prompt_version, simulation], sort_keys=True)
+        identity = json.dumps([stage, provider, model, settings.provenance(), schema.model_json_schema(), payload, images or [], pdf, prompt_version, simulation, ADAPTER_VERSION], sort_keys=True)
         digest = hashlib.sha256(identity.encode()).hexdigest()
         cache = self.cache_dir / (digest + '.json') if self.cache_dir else None
         if cache and cache.is_file():
@@ -133,38 +143,30 @@ class GroqClient:
                 result = schema.model_validate_json(cache.read_text(encoding='utf-8'))
             except (ValidationError, ValueError):
                 raise ModelError('Invalid local model cache; remove the affected ai-cache file and retry.') from None
-            self.records.append({'stage': stage, 'model': model, 'request_hash': digest, 'cached': True, 'usage': {}, 'simulation': simulation})
+            self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': digest, 'cached': True, 'usage': {}, 'simulation': simulation})
             return result.model_dump()
-        user_content = [{'type': 'text', 'text': text}]
-        for data_url in images or []:
-            user_content.append({'type': 'image_url', 'image_url': {'url': data_url}})
-        strict = model in STRICT_MODELS and not images
-        response_format = {'type': 'json_schema', 'json_schema': {
-            'name': stage, 'strict': True, 'schema': schema.model_json_schema()}} if strict else {'type': 'json_object'}
-        body = {'model': model, 'messages': [{'role': 'system', 'content': SYSTEM + '\nTASK: ' + TASKS[stage] +
-                 '\nJSON schema: ' + json.dumps(schema.model_json_schema())},
-                {'role': 'user', 'content': user_content if images else text}],
-                'response_format': response_format, 'max_completion_tokens': settings.max_output_tokens}
-        if stage in ('discovery', 'discovery_repair') and model in ('openai/gpt-oss-20b', 'openai/gpt-oss-120b'):
-            body['reasoning_effort'] = 'low'
+        prompt = SYSTEM + '\nTASK: ' + TASKS[stage] + '\nJSON schema: ' + json.dumps(schema.model_json_schema())
+        path, headers, body, format_name = request_spec(provider, model, key, stage, prompt, text,
+                                                      schema.model_json_schema(), settings.max_output_tokens, images, pdf)
+        strict = provider == 'groq' and body.get('response_format', {}).get('type') == 'json_schema'
         started = time.monotonic()
         format_recovery, transient_retry = False, False
         rate_retries, rate_waited = 0, 0
         request_attempts = 0
         rejected_outputs = []
-        with httpx.Client(base_url='https://api.groq.com/openai/v1', timeout=90, trust_env=False,
+        with httpx.Client(base_url=PROVIDERS[provider]['base'], timeout=90, trust_env=False,
                           transport=self.transport, follow_redirects=False) as client:
             # Each format permits two rate waits totaling <=60s, one format recovery and one server retry.
             while True:
                 request_attempts += 1
                 try:
-                    response = client.post('/chat/completions', headers={'Authorization': 'Bearer ' + settings.api_key}, json=body)
+                    response = client.post(path, headers=headers, json=body)
                 except httpx.HTTPError:
-                    raise ModelError('Groq network/timeout error. Credentials and provider response bodies are withheld.') from None
+                    raise ModelError(PROVIDERS[provider]['name'] + ' network/timeout error. Credentials and provider response bodies are withheld.') from None
                 if response.status_code == 429 and rate_retries < 2:
                     delay = retry_delay(response)
                     if rate_waited + delay > 60:
-                        raise ModelError('Groq rate-limit wait budget exceeded; no further request sent or account upgrade attempted.')
+                        raise ModelError('Provider rate-limit wait budget exceeded; no further request sent or account upgrade attempted.')
                     rate_retries += 1
                     rate_waited += delay
                     time.sleep(delay)
@@ -186,7 +188,7 @@ class GroqClient:
                         rate_retries, rate_waited = 0, 0
                         continue
                 if response.status_code != 200:
-                    error = provider_error(response, stage, model, settings.api_key, schema)
+                    error = provider_error(response, stage, model, key, schema, provider)
                     if format_recovery:
                         raise ModelError(str(error) + ' JSON format recovery was attempted once. Earlier rejected output analysis: '
                                          + json.dumps(rejected_outputs) + '.')
@@ -194,18 +196,16 @@ class GroqClient:
                 break
         try:
             data = response.json()
-            choice = data['choices'][0]
-            if choice.get('finish_reason') != 'stop':
-                raise ModelError('Model output was truncated or refused; no partial response was accepted.')
-            result = schema.model_validate_json(choice['message']['content'])
+            content, usage = response_content(provider, data)
+            if any(secret and secret in content for secret in (settings.api_key, settings.visual_key())):
+                raise ModelError('Model output contained credential material and was rejected; contents withheld.')
+            result = schema.model_validate_json(content)
         except ModelError:
             raise
-        except (ValueError, KeyError, IndexError, TypeError):
-            raise ModelError('Model response failed JSON/schema validation; no partial response or rule fallback was accepted.') from None
-        usage = {k: v for k, v in data.get('usage', {}).items()
-                 if k in ('prompt_tokens', 'completion_tokens', 'total_tokens') and isinstance(v, int)}
-        self.records.append({'stage': stage, 'model': model, 'request_hash': digest, 'cached': False,
-                             'usage': usage, 'simulation': simulation, 'response_format': body['response_format']['type'],
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+            raise ModelError('Model response was truncated, refused or failed JSON/schema validation; no partial response or rule fallback was accepted.') from None
+        self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': digest, 'cached': False,
+                             'usage': usage, 'simulation': simulation, 'response_format': body.get('response_format', {}).get('type', format_name),
                              'format_recovery': format_recovery, 'request_attempts': request_attempts,
                              'reasoning_effort': body.get('reasoning_effort', 'model default'),
                              'max_completion_tokens': settings.max_output_tokens, 'rejected_outputs': rejected_outputs,
@@ -221,3 +221,7 @@ class GroqClient:
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(payload, encoding='utf-8')
             self._pending_cache = None
+
+
+# Compatibility for existing local scripts; all application calls use the common client.
+GroqClient = ModelClient

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .input_documents import inspect_input, parse_input
 from .ai.routes import router as ai_router, new_client
+from .ai.settings_routes import router as settings_router
 from .ai.review import review_plan
 from .exporting import export_pair
 from .registry import CATEGORIES, build_registry, reindex_after_edits, rescan, uid
@@ -23,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 store = Store(os.environ.get('TERM_AGENT_DATA', ROOT / 'data' / 'projects'))
 app = FastAPI(title='Protocol SAP Terminology Agent', version='0.2.0')
 app.include_router(ai_router)
+app.include_router(settings_router)
 
 
 @app.exception_handler(ValueError)
@@ -88,7 +90,7 @@ async def read_upload(file, max_size=50 * 1024 * 1024):
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'version': app.version, 'engine': 'groq-ai-v1', 'model_calls_on_startup': False}
+    return {'status': 'ok', 'version': app.version, 'engine': 'provider-ai-v1', 'model_calls_on_startup': False}
 
 
 @app.post('/api/inspect')
@@ -213,7 +215,8 @@ def make_plan(pid: str, request: PlanRequest):
     if request.mode == 'ai':
         client = new_client(pid)
         plan = review_plan(p, request.concept_id, request.mappings, client)
-        p.setdefault('ai_runs', []).append({'id': uid(), 'stage': 'rename_review', 'status': 'completed', 'calls': client.records})
+        p.setdefault('ai_runs', []).append({'id': uid(), 'stage': 'rename_review', 'status': 'completed',
+                                          'configuration': client.settings.provenance(), 'calls': client.records})
     elif request.mode == 'rules':
         plan = preview(p, request.concept_id, request.mappings)
         plan['engine'] = 'rules-v1; explicit baseline'
