@@ -2,14 +2,16 @@
 
 A local FastAPI + React workspace for importing PDF document pairs, reviewing terminology evidence, approving individual naming changes and exporting separate Word working copies. No account, database service or API key is required for this first rule-based release.
 
-**This is a midterm technical baseline.** AI concept linking, OCR, complete terminology recall, automatic version compatibility and faithful reconstruction of complex tables/native Word footnotes are unfinished. Every selected PDF page is scanned; unsupported content is flagged and retained as unchanged source-page images in the Word appendix. See [verification](docs/verification.md) for the exact evidence and limits.
+**This is a midterm technical baseline.** AI concept linking, OCR, complete terminology recall, automatic version compatibility and faithful reconstruction of complex tables/native Word footnotes are unfinished. Every selected PDF page is scanned; unsupported content is flagged and retained as unchanged source-page images in the Word appendix.
+
+Development handoff notes in `docs/` and the course's `Presentation 2.txt` / `Presentation 3.txt` are local-only materials and are not included in current source checkouts. They are not required to run the application. Earlier commits/tags may still contain them; ignore rules do not erase Git history.
 
 ## Install on Windows
 
-Install Python 3.12 (with **Add Python to PATH**), Node.js 22.12 or later, and Git. Download/clone the tagged version into a writable folder:
+Install Python 3.12 (with **Add Python to PATH**), Node.js 22.12 or later, and Git. Clone the current main branch into a writable folder:
 
 ```powershell
-git clone --branch v0.1.0-midterm https://github.com/yshuaiw/protocol-sap-term-agent.git
+git clone --branch main https://github.com/yshuaiw/protocol-sap-term-agent.git
 cd protocol-sap-term-agent
 powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
 powershell -ExecutionPolicy Bypass -File scripts/start.ps1
@@ -70,4 +72,4 @@ node node_modules/vite/bin/vite.js build
 
 For browser QA, install Playwright separately (`npm install --no-save playwright` in a disposable tooling folder), expose it through `NODE_PATH` or `PLAYWRIGHT_MODULE`, run `.venv/Scripts/python.exe scripts/make-fixtures.py`, and run `node scripts/browser-smoke.cjs` from the repository root with the app running. It uses installed Edge by default; set `BROWSER_CHANNEL=chrome` if necessary. This creates local synthetic QA projects and screenshots. `scripts/capture-real-demo.cjs` captures the prepared real project.
 
-Implementation decisions: [notes](docs/implementation-notes.md). Current source-data audit: [data audit](docs/data-audit.md). No benchmark precision/recall or held-out accuracy has been established.
+No benchmark precision/recall or held-out accuracy has been established. Additional development notes and source-data audit records are maintained locally outside version control.

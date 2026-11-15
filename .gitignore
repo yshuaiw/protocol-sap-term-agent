@@ -21,3 +21,6 @@ Kickoff/
 test-results/
 playwright-report/
 *.log
+/docs/
+/Presentation 2.txt
+/Presentation 3.txt
