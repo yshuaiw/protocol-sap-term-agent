@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+if [ -n "${TERM_AGENT_HOOK_PYTHON:-}" ]; then
+    exec "$TERM_AGENT_HOOK_PYTHON" scripts/check-file-size.py
+elif [ -x .venv/Scripts/python.exe ]; then
+    exec .venv/Scripts/python.exe scripts/check-file-size.py
+elif [ -x .venv/bin/python ]; then
+    exec .venv/bin/python scripts/check-file-size.py
+elif command -v python3 >/dev/null 2>&1; then
+    exec python3 scripts/check-file-size.py
+else
+    exec python scripts/check-file-size.py
+fi

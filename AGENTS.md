@@ -10,6 +10,8 @@
 - Use Git CLI for small, reviewed commits and tags for verified demo versions. Keep API keys, local environments, caches, and personal runtime data out of version control.
 - Application history must persist with the local project and support transfer to the teammate's computer. Code Git history alone does not implement this feature.
 - Inspect available data and tools before asking the user to repeat confirmed requirements or investigate facts that can be checked locally. Record meaningful implementation choices and actual verification results in the project documentation.
+- Before adding a function or rule, search the existing implementation for an equivalent responsibility.
+- If the pre-commit size guard rejects a file, split it by responsibility, stage the smaller files and retry; see `scripts/check-file-size.py` for the 20,000-byte limit and generated-file exemptions.
 
 | Development rule | Verification guard |
 |---|---|

@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python scripts/install-hooks.py
 cd frontend
 npx --yes pnpm@11.25.0 install --frozen-lockfile --ignore-scripts
 node node_modules/vite/bin/vite.js build

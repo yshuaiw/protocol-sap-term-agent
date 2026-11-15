@@ -7,6 +7,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Use Python 3.12 or later.' }
 if (-not (Test-Path .venv/Scripts/python.exe)) { & $Python -m venv .venv; if ($LASTEXITCODE -ne 0) { throw 'Could not create Python environment.' } }
 & .venv/Scripts/python.exe -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed.' }
+& .venv/Scripts/python.exe scripts/install-hooks.py
+if ($LASTEXITCODE -ne 0) { throw 'Development hook installation needs attention; see the message above.' }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Install Node.js 22.12+ from nodejs.org.' }
 Push-Location frontend
 try {

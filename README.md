@@ -61,6 +61,8 @@ For HTTP 400 `json_validate_failed` from strict output, the adapter retries once
 
 ## Offline checks
 
+Setup installs the versioned `.githooks/pre-commit` hook for this checkout. Existing checkouts can run `.venv/Scripts/python.exe scripts/install-hooks.py` (macOS: `.venv/bin/python`). An existing unrelated hook configuration is retained and requires integration. Source blobs larger than 20,000 staged bytes are rejected; split by responsibility and retry. Lockfiles and explicitly named generated/build files are exempt; unstaged edits do not affect the check. `TERM_AGENT_HOOK_PYTHON` can select an interpreter for separate tooling environments. The pre-existing oversized `frontend/src/main.jsx` must be split when it is next changed.
+
 ```powershell
 .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 .venv/Scripts/python.exe -m pytest -q
