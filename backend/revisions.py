@@ -9,7 +9,7 @@ def preview(project, concept_id, mappings):
     allowed = {f.casefold() for f in [concept['name'], *concept['aliases']]}
     normalized = {}
     for old, new in mappings.items():
-        if old.casefold() not in allowed or not new.strip() or len(new) > 200:
+        if old.casefold() not in allowed or not new.strip() or len(new) > 200 or any(c in new for c in '\r\n\t'):
             raise ValueError('Mappings must use registered forms and nonempty replacements of at most 200 characters.')
         if old.casefold() in normalized:
             raise ValueError('Duplicate case-insensitive mapping.')
@@ -17,6 +17,7 @@ def preview(project, concept_id, mappings):
     if not normalized:
         raise ValueError('Provide at least one replacement mapping.')
     items = []
+    blocks = {b['id']: b for d in project['documents'] for b in d['blocks']}
     for mention in project['mentions']:
         if concept_id not in mention['candidates'] and mention['concept_id'] != concept_id:
             continue
@@ -35,6 +36,8 @@ def preview(project, concept_id, mappings):
             status, reason = 'preserve', 'Possible historical reference; preserved for separate review.'
         elif re.findall(r'\d+(?:\.\d+)?', mention['text']) != re.findall(r'\d+(?:\.\d+)?', new):
             status, reason = 'unresolved', 'Numeric label or design value changes need separate review; naming-only execution is blocked.'
+        if not blocks[mention['block_id']].get('editable', True):
+            status, reason = 'unresolved', 'This source field, tracked revision or embedded image requires manual source editing.'
         items.append({**mention, 'new': new or mention['text'], 'proposal': status, 'reason': reason})
     return {'id': uid(), 'base_revision': project['revision'], 'concept_id': concept_id,
             'mappings': mappings, 'items': items, 'applied': False}
@@ -57,6 +60,8 @@ def patch_blocks(project, plan, approved_ids):
     grouped = {}
     for item in approved:
         block = blocks[item['block_id']]
+        if not block.get('editable', True):
+            raise ValueError('This source region is not editable by an approved text patch.')
         if block['text'][item['start']:item['end']] != item['text']:
             raise ValueError('Source anchor no longer matches the preview.')
         grouped.setdefault(block['id'], []).append(item)

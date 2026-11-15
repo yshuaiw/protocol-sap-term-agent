@@ -47,8 +47,8 @@ class Store:
             (folder / 'inputs' / filename).write_bytes(content)
         project = {'schema': 1, 'id': pid, 'name': name, 'revision': 0, 'documents': documents,
                    'concepts': [], 'mentions': [], 'plans': [], 'exports': [], 'history': [],
-                   'version_note': version_note, 'engine': 'rules-v1; no model calls'}
-        return self.save(project, 'Imported original PDFs and parsed every selected page')
+                   'version_note': version_note, 'engine': 'pending', 'ai_runs': [], 'semantic_audits': []}
+        return self.save(project, 'Imported immutable original documents and indexed selected regions; AI generation not yet run')
 
     def save(self, project, action):
         folder = self.folder(project['id'])
@@ -77,7 +77,8 @@ class Store:
         data = io.BytesIO()
         with zipfile.ZipFile(data, 'w', zipfile.ZIP_DEFLATED) as archive:
             for f in self.folder(pid).rglob('*'):
-                if f.is_file() and f.suffix != '.tmp':
+                relative = f.relative_to(self.folder(pid)).as_posix()
+                if f.is_file() and (relative == 'project.json' or relative.startswith(('inputs/', 'snapshots/', 'exports/'))):
                     archive.write(f, f.relative_to(self.folder(pid)).as_posix())
         return data.getvalue()
 
@@ -89,7 +90,7 @@ class Store:
             names = [i.filename for i in entries]
             if len(set(names)) != len(names):
                 raise ValueError('Duplicate archive entries.')
-            pattern = r'(project\.json|inputs/[0-9a-f]{16}\.pdf|snapshots/\d{6}\.json|exports/[0-9a-f]{32}/[A-Za-z0-9_.-]+)'
+            pattern = r'(project\.json|inputs/[0-9a-f]{16}\.(pdf|docx)|snapshots/\d{6}\.json|exports/[0-9a-f]{32}/[A-Za-z0-9_.-]+)'
             if any(not re.fullmatch(pattern, name) for name in names):
                 raise ValueError('Unsafe or unexpected archive path.')
             project = json.loads(archive.read('project.json'))
@@ -110,7 +111,7 @@ class Store:
                         raise ValueError('Invalid project snapshot fields.')
                 for doc in state['documents']:
                     source = doc['source']
-                    if not re.fullmatch(r'[0-9a-f]{16}\.pdf', source) or f'inputs/{source}' not in names:
+                    if not re.fullmatch(r'[0-9a-f]{16}\.(pdf|docx)', source) or f'inputs/{source}' not in names:
                         raise ValueError('Missing or unsafe original PDF in project bundle.')
                     if hashlib.sha256(archive.read(f'inputs/{source}')).hexdigest() != doc['sha256']:
                         raise ValueError('Original PDF hash mismatch in bundle.')
@@ -140,7 +141,7 @@ class Store:
         import hashlib
         for doc in project['documents']:
             source = doc['source']
-            if not re.fullmatch(r'[0-9a-f]{16}\.pdf', source):
+            if not re.fullmatch(r'[0-9a-f]{16}\.(pdf|docx)', source):
                 raise ValueError('Invalid source filename.')
             path = self.folder(project['id']) / 'inputs' / source
             if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != doc['sha256']:

@@ -9,6 +9,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from .docx_export import export_docx
 
 
 def export_pair(project, folder: Path, log: list, export_id: str):
@@ -16,6 +17,11 @@ def export_pair(project, folder: Path, log: list, export_id: str):
     out.mkdir(parents=True, exist_ok=True)
     files, checks = [], []
     for source in project['documents']:
+        if source.get('format') == 'docx':
+            path = out / f"{source['role']}_revised.docx"
+            checks.append(export_docx(source, (folder / 'inputs' / source['source']).read_bytes(), path))
+            files.append(path.name)
+            continue
         doc = Document()
         section = doc.sections[0]
         section.header.paragraphs[0].text = f"{source['role']} | reconstructed working copy"
@@ -63,6 +69,8 @@ def export_pair(project, folder: Path, log: list, export_id: str):
                     cell.text = block['text']
                     anchor(cell.paragraphs[0], block)
                 else:
+                    if block.get('evidence_kind') == 'visual_transcription':
+                        doc.add_paragraph('Unverified model transcription from this source page; compare the original image.', style='Caption')
                     paragraph = doc.add_paragraph(block['text'])
                     anchor(paragraph, block)
             for issue in page['issues']:
@@ -107,8 +115,8 @@ def export_pair(project, folder: Path, log: list, export_id: str):
     report = {'export_id': export_id, 'approved_changes': log, 'documents': checks,
               'verified': all(c['exact_text_match'] and c['source_page_image_hashes_match'] for c in checks),
               'limits': ['Verification covers exact parsed text, approved patch reconciliation and original source hashes, not semantic correctness.',
-                         'Page facsimiles retain original visual content; they are not edited. No OCR. Complex tables and footnotes are not semantically reconstructed.',
-                         'DOCX layout has not been certified as equivalent to PDF.']}
+                         'PDF facsimiles retain original visuals and are not edited. Model visual transcriptions require human source review.',
+                         'Native DOCX packages preserve unrelated parts; PDF reconstruction, complex structures and final layout still require visual verification.']}
     (out / 'verification.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
     (out / 'change-log.json').write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding='utf-8')
     (out / 'mention-index.json').write_text(json.dumps(project['mentions'], indent=2, ensure_ascii=False), encoding='utf-8')

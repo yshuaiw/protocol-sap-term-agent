@@ -78,10 +78,17 @@ def rescan(project):
         old = previous.get(key)
         if old and old.get('manual') and old['concept_id'] in confirmed:
             item.update({k: old[k] for k in ('id', 'concept_id', 'status', 'manual')})
+        elif old and old.get('model_link_status') in ('supported', 'ambiguous') and old['concept_id'] in confirmed:
+            item.update(id=old['id'], concept_id=old['concept_id'], manual=False,
+                        status='confirmed' if confirmed[old['concept_id']] and old['model_link_status'] == 'supported' else 'unresolved')
         else:
             unique = len(item['candidates']) == 1
             cid = item['candidates'][0] if unique else None
             item.update(concept_id=cid, status='confirmed' if unique and confirmed[cid] else 'unresolved', manual=False)
+        if old:
+            for name in ('model_link_status', 'model_reason', 'origin', 'evidence_kind'):
+                if name in old:
+                    item[name] = old[name]
         result.append(item)
     project['mentions'] = result
 

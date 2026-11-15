@@ -70,6 +70,18 @@ def parse_pdf(content: bytes, role: str, start: int, end: int, name: str) -> dic
                     region = 'footnote_candidate'
                 page_blocks.append({'region': region, 'bbox': box, 'text': text})
             page_blocks.sort(key=lambda b: (b['bbox'][1], b['bbox'][0]))
+            merged = []
+            for block in page_blocks:
+                previous = merged[-1] if merged else None
+                if (previous and block['region'] == previous['region'] == 'body'
+                        and 0 <= block['bbox'][1] - previous['bbox'][3] <= 6
+                        and abs(block['bbox'][0] - previous['bbox'][0]) <= 8):
+                    previous['text'] += ' ' + block['text']
+                    previous['bbox'] = [min(previous['bbox'][0], block['bbox'][0]), previous['bbox'][1],
+                                        max(previous['bbox'][2], block['bbox'][2]), block['bbox'][3]]
+                else:
+                    merged.append(block)
+            page_blocks = merged
             for bi, block in enumerate(page_blocks):
                 block.update(id=f'{doc_id}:p{number}:b{bi}', page=number, original_text=block['text'])
                 blocks.append(block)

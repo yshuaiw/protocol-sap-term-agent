@@ -48,7 +48,7 @@ def client(tmp_path, monkeypatch):
 
 
 def create(client, name='Test project'):
-    result = client.post('/api/projects', data={'name': name, 'version_note': 'Both Version 1.0 checked on title pages.',
+    result = client.post('/api/projects', data={'name': name, 'engine': 'rules', 'version_note': 'Both Version 1.0 checked on title pages.',
         'selections': json.dumps([{'role': r, 'file_index': i, 'start': 1, 'end': 1} for i, r in enumerate(('Protocol', 'SAP'))])},
         files=[('files', (f'{role}.pdf', make_pdf(role), 'application/pdf')) for role in ('Protocol', 'SAP')])
     assert result.status_code == 200, result.text
@@ -64,7 +64,7 @@ def confirm(client, p, name='Arm A', aliases=None):
 
 
 def plan(client, p, cid, mappings=None):
-    response = client.post(f"/api/projects/{p['id']}/plans", json={'revision': p['revision'], 'concept_id': cid,
+    response = client.post(f"/api/projects/{p['id']}/plans", json={'revision': p['revision'], 'concept_id': cid, 'mode': 'rules',
                                                                 'mappings': mappings or {'Arm A': 'Investigational Arm A'}})
     assert response.status_code == 200, response.text
     return response.json()
@@ -216,7 +216,7 @@ def test_combined_ranges_and_scan_rejection(client):
     r = client.post('/api/projects', data={'name': 'Combined', 'version_note': 'Review', 'selections': json.dumps(selection)},
                     files={'files': ('combined.pdf', buf.getvalue())})
     assert r.status_code == 400 and 'overlap' in r.text
-    r = client.post('/api/projects', data={'name': 'Scanned', 'version_note': 'Review', 'selections': json.dumps([
+    r = client.post('/api/projects', data={'name': 'Scanned', 'engine': 'rules', 'version_note': 'Review', 'selections': json.dumps([
         {'role': r, 'file_index': i, 'start': 1, 'end': 1} for i, r in enumerate(('Protocol', 'SAP'))])},
         files=[('files', ('scan.pdf', make_pdf(scanned=True))), ('files', ('sap.pdf', make_pdf('SAP')))])
     assert r.status_code == 400 and 'OCR' in r.text

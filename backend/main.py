@@ -11,7 +11,9 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from .documents import inspect_pdf, parse_pdf
+from .input_documents import inspect_input, parse_input
+from .ai.routes import router as ai_router, new_client
+from .ai.review import review_plan
 from .exporting import export_pair
 from .registry import CATEGORIES, build_registry, reindex_after_edits, rescan, uid
 from .revisions import patch_blocks, preview
@@ -19,7 +21,8 @@ from .store import LOCK, Store
 
 ROOT = Path(__file__).resolve().parents[1]
 store = Store(os.environ.get('TERM_AGENT_DATA', ROOT / 'data' / 'projects'))
-app = FastAPI(title='Protocol SAP Terminology Agent', version='0.1.0')
+app = FastAPI(title='Protocol SAP Terminology Agent', version='0.2.0')
+app.include_router(ai_router)
 
 
 @app.exception_handler(ValueError)
@@ -51,6 +54,7 @@ class PlanRequest(Strict):
     revision: int
     concept_id: str
     mappings: dict[str, str]
+    mode: str = 'ai'
 
 
 class ApplyRequest(Strict):
@@ -84,16 +88,16 @@ async def read_upload(file, max_size=50 * 1024 * 1024):
 
 @app.get('/api/health')
 def health():
-    return {'status': 'ok', 'version': app.version, 'engine': 'rules-v1', 'model_calls': False}
+    return {'status': 'ok', 'version': app.version, 'engine': 'groq-ai-v1', 'model_calls_on_startup': False}
 
 
 @app.post('/api/inspect')
 async def inspect(file: UploadFile = File(...)):
     content = await read_upload(file)
     try:
-        return inspect_pdf(content)
+        return inspect_input(content)
     except Exception as exc:
-        raise ValueError('Could not inspect PDF. Use a valid, unlocked PDF.') from exc
+        raise ValueError('Could not inspect document. Use a valid unlocked PDF or macro-free DOCX.') from exc
 
 
 @app.get('/api/projects')
@@ -103,7 +107,7 @@ def projects():
 
 @app.post('/api/projects')
 async def create(name: str = Form(...), selections: str = Form(...), version_note: str = Form(...),
-                 files: list[UploadFile] = File(...)):
+                 files: list[UploadFile] = File(...), engine: str = Form('ai')):
     if not name.strip() or len(name) > 200 or not version_note.strip():
         raise ValueError('Name and a reviewed document/version note are required.')
     try:
@@ -111,7 +115,7 @@ async def create(name: str = Form(...), selections: str = Form(...), version_not
     except json.JSONDecodeError as exc:
         raise ValueError('Invalid document selections.') from exc
     if len(files) not in (1, 2) or len(choices) != 2 or {c['role'] for c in choices} != {'Protocol', 'SAP'}:
-        raise ValueError('Select one Protocol and one independent SAP (one combined PDF or two PDFs).')
+        raise ValueError('Select independent Protocol/SAP PDF or DOCX files, or nonoverlapping ranges in one combined PDF.')
     contents = [await read_upload(f) for f in files]
     documents, inputs = [], {}
     for choice in choices:
@@ -122,22 +126,28 @@ async def create(name: str = Form(...), selections: str = Form(...), version_not
             raise ValueError('Page bounds must be integers.')
         content = contents[index]
         try:
-            doc = parse_pdf(content, choice['role'], choice['start'], choice['end'], Path(files[index].filename or 'input.pdf').name)
+            doc = parse_input(content, choice['role'], choice['start'], choice['end'], Path(files[index].filename or 'input').name)
         except Exception as exc:
             raise ValueError(f"Could not parse {choice['role']}: {exc}") from exc
-        source = hashlib.sha256(content).hexdigest()[:16] + '.pdf'
+        source = hashlib.sha256(content).hexdigest()[:16] + '.' + doc['format']
         doc['source'] = source
         inputs[source] = content
         documents.append(doc)
     a, b = documents
     if a['source'] == b['source'] and max(a['start'], b['start']) <= min(a['end'], b['end']):
         raise ValueError('Protocol and SAP page ranges must not overlap in a combined file.')
-    if any(not any(p['words'] for p in d['pages']) for d in documents):
+    if engine not in ('ai', 'rules'):
+        raise ValueError('Unknown registry engine.')
+    if engine == 'rules' and any(not any(p['words'] for p in d['pages']) for d in documents):
         raise ValueError('A selected document has no extractable text. OCR is required before registry generation.')
     with LOCK:
         project = store.create(name.strip(), documents, inputs, version_note.strip())
-        build_registry(project)
-        return store.save(project, 'Generated full selected-document terminology candidates using rules; human review required')
+        if engine == 'rules':
+            build_registry(project)
+            project['engine'] = 'rules-v1; explicit baseline'
+            return store.save(project, 'Generated explicit rule baseline; no model calls or semantic linking')
+        project['engine'] = 'pending-ai'
+        return store.save(project, 'Ready for explicit AI generation; import made no model requests')
 
 
 @app.get('/api/projects/{pid}')
@@ -200,7 +210,17 @@ def make_plan(pid: str, request: PlanRequest):
     with LOCK:
         p = load(pid)
         guard(p, request.revision)
+    if request.mode == 'ai':
+        client = new_client(pid)
+        plan = review_plan(p, request.concept_id, request.mappings, client)
+        p.setdefault('ai_runs', []).append({'id': uid(), 'stage': 'rename_review', 'status': 'completed', 'calls': client.records})
+    elif request.mode == 'rules':
         plan = preview(p, request.concept_id, request.mappings)
+        plan['engine'] = 'rules-v1; explicit baseline'
+    else:
+        raise ValueError('Unknown review mode.')
+    with LOCK:
+        guard(load(pid), request.revision)
         p['plans'].append(plan)
         # A preview is valid at the revision that contains it; persist once atomically.
         plan['base_revision'] = p['revision'] + 1
@@ -241,6 +261,9 @@ def apply(pid: str, plan_id: str, request: ApplyRequest):
         verify_patch_delta(before, p, plan, set(request.approved_ids))
         reindex_after_edits(p, plan, set(request.approved_ids))
         result = export_pair(p, store.folder(pid), log, uid())
+        changed = {i['block_id'] for i in log}
+        result['before_blocks'] = {b['id']: b['text'] for d in before['documents'] for b in d['blocks'] if b['id'] in changed}
+        result['after_blocks'] = {b['id']: b['text'] for d in p['documents'] for b in d['blocks'] if b['id'] in changed}
         result['verification']['approved_delta_match'] = True
         report_path = store.folder(pid) / 'exports' / result['id'] / 'verification.json'
         report_path.write_text(json.dumps(result['verification'], indent=2, ensure_ascii=False), encoding='utf-8')
@@ -263,7 +286,8 @@ def source(pid: str, doc_id: str):
     doc = next((d for d in p['documents'] if d['id'] == doc_id), None)
     if not doc:
         raise ValueError('Unknown document.')
-    return FileResponse(store.folder(pid) / 'inputs' / doc['source'], media_type='application/pdf')
+    media = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if doc.get('format') == 'docx' else 'application/pdf'
+    return FileResponse(store.folder(pid) / 'inputs' / doc['source'], media_type=media, filename=doc['name'])
 
 
 @app.get('/api/projects/{pid}/bundle')
