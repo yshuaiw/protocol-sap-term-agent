@@ -76,8 +76,8 @@ class ScriptedGroq:
                     pos = block['text'].find('Arm A')
                     if pos >= 0:
                         mentions.append({'block_id': block['block_id'],
-                            'evidence': block['text'][max(0, pos - 20):pos + 25],
-                            'text': 'invented' if self.invalid else 'Arm A', 'canonical_name': 'Arm A',
+                            'context_quote': block['text'][max(0, pos - 20):pos + 25],
+                            'term_text': 'invented' if self.invalid else 'Arm A', 'canonical_name': 'Arm A',
                             'category': 'treatment', 'definition': 'Named treatment group', 'reason': 'Exact anchored label.'})
                 answer = {'mentions': mentions}
             elif 'ledger' in payload:

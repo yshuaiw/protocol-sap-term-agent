@@ -15,7 +15,7 @@ def project(text):
 
 
 def mention(text, evidence, block_id='block'):
-    return {'block_id': block_id, 'text': text, 'evidence': evidence, 'canonical_name': text,
+    return {'block_id': block_id, 'term_text': text, 'context_quote': evidence, 'canonical_name': text,
             'category': 'treatment', 'definition': 'Fixture group.', 'reason': 'Quoted in the document.'}
 
 

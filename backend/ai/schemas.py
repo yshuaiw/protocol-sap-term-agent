@@ -11,8 +11,10 @@ Category = Literal['treatment', 'visit', 'endpoint', 'label']
 
 class ExtractedMention(Strict):
     block_id: str
-    text: str = Field(min_length=1, max_length=300)
-    evidence: str = Field(min_length=1, max_length=2000)
+    term_text: str = Field(min_length=1, max_length=300,
+        description='Only the verbatim term name, alias or abbreviation; never copy the entire source block or sentence unless it is itself the term.')
+    context_quote: str = Field(min_length=1, max_length=2000,
+        description='A verbatim quotation from this same block containing term_text exactly once; include enough context to distinguish repetitions.')
     canonical_name: str = Field(min_length=1, max_length=200)
     category: Category
     definition: str = Field(max_length=1500)
@@ -23,9 +25,20 @@ class Extraction(Strict):
     mentions: list[ExtractedMention] = Field(max_length=250)
 
 
+class DiscoveryRepair(Strict):
+    rejected_id: str
+    action: Literal['corrected', 'out_of_scope', 'unresolved']
+    mentions: list[ExtractedMention] = Field(max_length=250)
+    reason: str = Field(min_length=1, max_length=1500)
+
+
+class DiscoveryRepairs(Strict):
+    decisions: list[DiscoveryRepair] = Field(max_length=250)
+
+
 class Link(Strict):
-    candidate_id: str
-    group_id: str
+    candidate_id: str = Field(description='Copy the exact supplied candidate reference, such as C1.')
+    group_id: str = Field(description='Use an exact existing ledger reference such as L1, or new: followed by a new group label. Never invent an existing ledger reference.')
     canonical_name: str = Field(min_length=1, max_length=200)
     category: Category
     definition: str = Field(max_length=1500)

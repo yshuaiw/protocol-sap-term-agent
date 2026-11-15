@@ -1,6 +1,7 @@
 """Bounded Groq requests. Never expose vendor error bodies, keys or raw HTTP exceptions."""
 import hashlib
 import json
+import math
 import re
 import time
 from pathlib import Path
@@ -20,8 +21,9 @@ Preserve distinct populations, definitions, timepoints and historical references
 Do not treat identical spellings or abbreviations as sufficient proof of concept identity.'''
 
 TASKS = {
- 'discovery': 'Find ALL in-scope term occurrences in the supplied chunks, not only familiar terms. For each occurrence return its exact text and an evidence quotation copied verbatim from that chunk text. Preserve case, whitespace, punctuation and Unicode in text/evidence; normalize names only in canonical_name. Evidence must include the term exactly once and uniquely identify its occurrence within the supplied block text; use the shortest sufficient surrounding quotation. Repeated spellings may represent different concepts: give each occurrence its own distinguishing quotation. Use only supplied block IDs. Neighboring context helps interpretation but is not an extraction target. Do not calculate character offsets. Include abbreviations and aliases. Keep definitions and reasons to one concise sentence each. Empty mentions is allowed only when no in-scope terms occur.',
- 'linking': 'Assign EVERY candidate exactly once to an existing ledger concept ID or a new group_id starting new:. Use evidence/definitions and document role. New groups with identical group_id must have the same category/name. Do not collapse abbreviation collisions. Ambiguous candidates must get their own new group and ambiguous=true. Existing concepts retain their given name/category. Grouping is a suggestion for human review.',
+ 'discovery_repair': 'Review EVERY rejected proposal exactly once using its rejected_id. Only supplied chunks[].text are extraction targets, each under its own block_id. Correct term_text and context_quote so the exact term occurs once in a unique quotation from that same target. Output corrected plus one or more valid mentions for a real in-scope term. Use out_of_scope with no mentions only for a non-term: e.g. generic "Arm" alone when the actual named groups are "Arm A" and "Arm B". Do not discard formal names or abbreviations just because their prior quotation was wrong. Use unresolved with no mentions when you cannot faithfully locate a real term. Give a specific reason. Preserve every rejected_id; no invented or omitted IDs. Never use approximate source text or calculate character counts.',
+ 'discovery': 'Find ALL in-scope term occurrences in the supplied chunks, not only familiar terms. Output term_text = ONLY the exact term name, alias or abbreviation, NOT the full input record.text. Output context_quote = a verbatim quotation from that SAME record.text containing term_text exactly once. Example: input record.text "Arm A receives treatment." -> term_text "Arm A", context_quote "Arm A receives treatment.". Use the record own block_id; never attach text from another record. Preserve case, whitespace, punctuation and Unicode in both fields; normalize names only in canonical_name. Use the shortest quotation that uniquely identifies the occurrence in record.text. Repeated spellings may represent different concepts: give each occurrence its own distinguishing quotation. Do not calculate character offsets. Include abbreviations and aliases. Keep definitions and reasons to one concise sentence each. Empty mentions is allowed only when no in-scope terms occur.',
+ 'linking': 'Assign EVERY supplied candidate reference (C1, C2, ...) exactly once. group_id must be an existing ledger reference (L1, L2, ...) or a new label starting new:. Copy references exactly; they are local to this request. Use evidence/definitions and document role, not matching spellings alone. New groups with identical group_id must have the same category/name. Do not collapse abbreviation collisions. Ambiguous candidates get their own new group and ambiguous=true. For an L reference copy its ledger name/category exactly. Grouping is a suggestion for human review.',
  'rename_review': 'Judge EVERY supplied mention exactly once: update, preserve or unresolved. Only a naming change is allowed. Keep historical quotations and unrelated uses, flag changes to definitions/design rules as semantic_risk=true. Evidence must be an exact substring of the mention context. Do not invent mappings or replacement forms. Respect human preserve/uncertain decisions.',
  'interpretation': 'Interpret the reviewer naming request using ONLY existing concept IDs and forms. Return proposed old/new mappings for explicit human review. If the target is unclear use an empty concept_id and no mappings. Flag anything beyond naming as semantic_risk=true.',
  'vision': 'Transcribe additional visible document text not already present in native_text, including image text and table labels. Do not duplicate native_text. Preserve wording/numbers. Describe unreadable or missing content in limitations. All transcriptions remain visually unverified until a reviewer checks the source.',
@@ -33,6 +35,18 @@ STRICT_MODELS = {'openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b'
 
 class ModelError(ValueError):
     pass
+
+
+def retry_delay(response):
+    if response.status_code != 429:
+        return .25
+    try:
+        seconds = float(response.headers.get('retry-after', '2'))
+    except ValueError:
+        seconds = 2
+    if not math.isfinite(seconds) or seconds > 60:
+        raise ModelError('Groq rate limit requires a longer wait. This run stopped without upgrading or making further requests.')
+    return min(60, max(.25, seconds) + .5)
 
 
 def provider_error(response, stage, model, api_key, schema=None):
@@ -60,6 +74,7 @@ def provider_error(response, stage, model, api_key, schema=None):
     reason = reasons.get(known_code, {
         400: 'The provider rejected the request; this status alone does not establish a credential or quota problem.',
         401: 'Authentication failed; check local credentials.',
+        402: 'Billing or credit access is required; no automatic upgrade or retry was attempted.',
         403: 'Access was denied; check account/model permissions.',
         404: 'The endpoint or model is unavailable.',
         413: 'The request is too large.',
@@ -109,7 +124,7 @@ class GroqClient:
         if len(text) > 100000:
             raise ModelError('Model payload is too large. Reduce batch size; content was not silently truncated.')
         simulation = isinstance(self.transport, httpx.MockTransport)
-        prompt_version = 'discovery-v3-quotes' if stage == 'discovery' else 'prompt-v1'
+        prompt_version = {'discovery': 'discovery-v5-explicit-terms', 'linking': 'linking-v2-compact-refs'}.get(stage, 'prompt-v1')
         identity = json.dumps([stage, model, schema.model_json_schema(), payload, images or [], prompt_version, simulation], sort_keys=True)
         digest = hashlib.sha256(identity.encode()).hexdigest()
         cache = self.cache_dir / (digest + '.json') if self.cache_dir else None
@@ -130,24 +145,33 @@ class GroqClient:
                  '\nJSON schema: ' + json.dumps(schema.model_json_schema())},
                 {'role': 'user', 'content': user_content if images else text}],
                 'response_format': response_format, 'max_completion_tokens': settings.max_output_tokens}
-        if stage == 'discovery' and model in ('openai/gpt-oss-20b', 'openai/gpt-oss-120b'):
+        if stage in ('discovery', 'discovery_repair') and model in ('openai/gpt-oss-20b', 'openai/gpt-oss-120b'):
             body['reasoning_effort'] = 'low'
         started = time.monotonic()
         format_recovery, transient_retry = False, False
+        rate_retries, rate_waited = 0, 0
         request_attempts = 0
         rejected_outputs = []
         with httpx.Client(base_url='https://api.groq.com/openai/v1', timeout=90, trust_env=False,
                           transport=self.transport, follow_redirects=False) as client:
-            # At most one format recovery and one transient retry: three HTTP attempts total.
+            # Each format permits two rate waits totaling <=60s, one format recovery and one server retry.
             while True:
                 request_attempts += 1
                 try:
                     response = client.post('/chat/completions', headers={'Authorization': 'Bearer ' + settings.api_key}, json=body)
                 except httpx.HTTPError:
                     raise ModelError('Groq network/timeout error. Credentials and provider response bodies are withheld.') from None
-                if response.status_code in (429, 500, 502, 503) and not transient_retry:
+                if response.status_code == 429 and rate_retries < 2:
+                    delay = retry_delay(response)
+                    if rate_waited + delay > 60:
+                        raise ModelError('Groq rate-limit wait budget exceeded; no further request sent or account upgrade attempted.')
+                    rate_retries += 1
+                    rate_waited += delay
+                    time.sleep(delay)
+                    continue
+                if response.status_code in (500, 502, 503) and not transient_retry:
                     transient_retry = True
-                    time.sleep(.25)
+                    time.sleep(retry_delay(response))
                     continue
                 if response.status_code == 400 and strict and not format_recovery:
                     try:
@@ -159,6 +183,7 @@ class GroqClient:
                         # Same model, full input and schema prompt. Local/evidence validation still mandatory.
                         body['response_format'] = {'type': 'json_object'}
                         format_recovery = True
+                        rate_retries, rate_waited = 0, 0
                         continue
                 if response.status_code != 200:
                     error = provider_error(response, stage, model, settings.api_key, schema)
