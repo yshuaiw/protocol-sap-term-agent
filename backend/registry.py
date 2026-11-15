@@ -55,15 +55,23 @@ def rescan(project):
     for doc in project['documents']:
         for block in doc['blocks']:
             for concept in project['concepts']:
+                spans = []
                 for form in dict.fromkeys([concept['name'], *concept['aliases']]):
                     for match in matches(block['text'], form):
-                        key = (block['id'], match.start(), match.end(), match.group())
-                        item = occurrences.setdefault(key, {'id': uid(), 'doc_id': doc['id'], 'role': doc['role'],
-                            'page': block['page'], 'region': block['region'], 'block_id': block['id'],
-                            'start': match.start(), 'end': match.end(), 'text': match.group(),
-                            'context': block['text'], 'candidates': []})
-                        if concept['id'] not in item['candidates']:
-                            item['candidates'].append(concept['id'])
+                        spans.append(match)
+                accepted = []
+                for match in sorted(spans, key=lambda m: (-(m.end() - m.start()), m.start())):
+                    # A longer registered name wins over its own nested alias.
+                    if any(match.start() < end and match.end() > start for start, end in accepted):
+                        continue
+                    accepted.append((match.start(), match.end()))
+                    key = (block['id'], match.start(), match.end(), match.group())
+                    item = occurrences.setdefault(key, {'id': uid(), 'doc_id': doc['id'], 'role': doc['role'],
+                        'page': block['page'], 'region': block['region'], 'block_id': block['id'],
+                        'start': match.start(), 'end': match.end(), 'text': match.group(),
+                        'context': block['text'], 'candidates': []})
+                    if concept['id'] not in item['candidates']:
+                        item['candidates'].append(concept['id'])
     result = []
     confirmed = {c['id']: c['confirmed'] for c in project['concepts']}
     for key, item in occurrences.items():
@@ -76,3 +84,36 @@ def rescan(project):
             item.update(concept_id=cid, status='confirmed' if unique and confirmed[cid] else 'unresolved', manual=False)
         result.append(item)
     project['mentions'] = result
+
+
+def reindex_after_edits(project, plan, approved_ids):
+    """Keep reviewed links while shifting offsets and adding approved new naming forms."""
+    from collections import defaultdict
+    changes = defaultdict(list)
+    approved = [i for i in plan['items'] if i['id'] in approved_ids]
+    for item in approved:
+        changes[item['block_id']].append(item)
+    concept = next(c for c in project['concepts'] if c['id'] == plan['concept_id'])
+    old_forms = [concept['name'], *concept['aliases']]
+    mappings = {old.casefold(): new for old, new in plan['mappings'].items()}
+    if concept['name'].casefold() in mappings:
+        concept['name'] = mappings[concept['name'].casefold()]
+    concept['aliases'] = list(dict.fromkeys([*concept['aliases'], *old_forms, *[i['new'] for i in approved]]))
+    concept['aliases'] = [a for a in concept['aliases'] if a != concept['name']]
+    blocks = {b['id']: b['text'] for d in project['documents'] for b in d['blocks']}
+    retained = []
+    for mention in project['mentions']:
+        edits = changes[mention['block_id']]
+        overlap = [i for i in edits if i['start'] < mention['end'] and i['end'] > mention['start']]
+        shift = sum(len(i['new']) - len(i['text']) for i in edits if i['end'] <= mention['start'])
+        if overlap:
+            if len(overlap) != 1 or overlap[0]['id'] != mention['id']:
+                continue
+            mention.update(text=overlap[0]['new'], status='confirmed', manual=True)
+            mention['end'] = mention['start'] + len(mention['text'])
+        mention['start'] += shift
+        mention['end'] += shift
+        mention['context'] = blocks[mention['block_id']]
+        retained.append(mention)
+    project['mentions'] = retained
+    rescan(project)

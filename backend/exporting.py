@@ -35,6 +35,7 @@ def export_pair(project, folder: Path, log: list, export_id: str):
                           'Review the coverage report before using this draft.')
         doc.add_paragraph(f"Source: {source['name']} | PDF pages {source['start']}-{source['end']} | SHA256 {source['sha256']}")
         expected = []
+        expected_images = []
         anchor_number = 0
         def anchor(paragraph, block):
             nonlocal anchor_number
@@ -76,6 +77,7 @@ def export_pair(project, folder: Path, log: list, export_id: str):
                 picture = pdf.pages[page['page'] - 1].to_image(resolution=100).original
                 buffer = io.BytesIO()
                 picture.convert('RGB').save(buffer, format='PNG')
+                expected_images.append(hashlib.sha256(buffer.getvalue()).hexdigest())
                 buffer.seek(0)
                 width = min(6, 7.4 * picture.width / picture.height)
                 doc.add_picture(buffer, width=Inches(width))
@@ -92,12 +94,18 @@ def export_pair(project, folder: Path, log: list, export_id: str):
         for marker, text in expected:
             if found.get(marker) != [text]:
                 errors.append(marker)
+        actual_images = []
+        for shape in reopened.inline_shapes:
+            rid = shape._inline.graphic.graphicData.pic.blipFill.blip.embed
+            actual_images.append(hashlib.sha256(reopened.part.related_parts[rid].blob).hexdigest())
+        images_match = actual_images == expected_images
         checks.append({'role': source['role'], 'blocks_expected': len(expected), 'blocks_reread': len(expected) - len(errors),
                        'exact_text_match': not errors, 'failed_anchors': errors,
-                       'source_pages_retained': len(source['pages']), 'coverage_warnings': source['warnings']})
+                       'source_pages_retained': len(actual_images), 'source_page_image_hashes_match': images_match,
+                       'coverage_warnings': source['warnings']})
         files.append(path.name)
     report = {'export_id': export_id, 'approved_changes': log, 'documents': checks,
-              'verified': all(c['exact_text_match'] for c in checks),
+              'verified': all(c['exact_text_match'] and c['source_page_image_hashes_match'] for c in checks),
               'limits': ['Verification covers exact parsed text, approved patch reconciliation and original source hashes, not semantic correctness.',
                          'Page facsimiles retain original visual content; they are not edited. No OCR. Complex tables and footnotes are not semantically reconstructed.',
                          'DOCX layout has not been certified as equivalent to PDF.']}

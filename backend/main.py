@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .documents import inspect_pdf, parse_pdf
 from .exporting import export_pair
-from .registry import CATEGORIES, build_registry, rescan, uid
+from .registry import CATEGORIES, build_registry, reindex_after_edits, rescan, uid
 from .revisions import patch_blocks, preview
 from .store import LOCK, Store
 
@@ -239,9 +239,7 @@ def apply(pid: str, plan_id: str, request: ApplyRequest):
         before = store.clone(p)
         log = patch_blocks(p, plan, request.approved_ids)
         verify_patch_delta(before, p, plan, set(request.approved_ids))
-        # Reindex after patching; remove previous offsets so stale associations are not reused.
-        p['mentions'] = []
-        rescan(p)
+        reindex_after_edits(p, plan, set(request.approved_ids))
         result = export_pair(p, store.folder(pid), log, uid())
         result['verification']['approved_delta_match'] = True
         report_path = store.folder(pid) / 'exports' / result['id'] / 'verification.json'
