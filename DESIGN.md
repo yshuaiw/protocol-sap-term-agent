@@ -6,3 +6,5 @@
 - Use text controls and existing browser elements; no decorative icons, gradients or animations.
 - Prioritize evidence, source access, review decisions and explicit coverage limits.
 - On narrow screens stack the register and evidence; preserve horizontal scrolling inside data tables.
+
+- Keep empty-state text inside bordered lists inset and aligned with the search label (17px horizontal padding here); text against the border feels cramped, as corrected by the user.
