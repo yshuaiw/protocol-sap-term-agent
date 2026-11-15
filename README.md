@@ -2,7 +2,7 @@
 
 Local FastAPI + React workspace for PDF/DOCX document pairs, AI terminology discovery and linking, reviewer corrections, per-occurrence naming approvals, separate revised Word files and portable project history.
 
-**Version 0.2 integration is offline-tested only.** No real Groq request, credential authentication, account quota or semantic quality evaluation has been performed. Test fixtures use scripted responses and label runs as simulated.
+**Version 0.2 has limited live connectivity evidence, not validated full-document AI performance.** On 2026-11-15, two live synthetic discovery probes with GPT-OSS 20B returned HTTP 200 and schema-valid JSON. Full-document processing, vision access, sustained quota and semantic quality remain unverified. Automated tests use scripted responses and label runs as simulated.
 
 ## Windows setup
 
@@ -27,7 +27,7 @@ powershell -ExecutionPolicy Bypass -File scripts/start.ps1
 
 Open **http://127.0.0.1:8765**. Stop the previous server with Ctrl+C before changing mode. Importing files, loading projects and refreshing settings do not call models. **AI register generation, boundary suggestions, request interpretation, Groq replacement review and semantic audit** explicitly send relevant document content to Groq.
 
-Default text model: `openai/gpt-oss-20b` (`GROQ_MODEL`). Default vision model: `qwen/qwen3.8-27b` (`GROQ_VISION_MODEL`). They are selected from documented capabilities, not verified account access. See [structured outputs](https://console.groq.com/docs/structured-outputs), [vision](https://console.groq.com/docs/vision), and [models](https://console.groq.com/docs/models). Model/quota errors are reported without silent rule fallback.
+Default text model: `openai/gpt-oss-20b` (`GROQ_MODEL`). Default vision model: `qwen/qwen3.8-27b` (`GROQ_VISION_MODEL`). Account access can vary; vision access has not been live-verified. See [structured outputs](https://console.groq.com/docs/structured-outputs), [vision](https://console.groq.com/docs/vision), and [models](https://console.groq.com/docs/models). Model/quota errors are reported without silent rule fallback.
 
 ## Workflow
 
@@ -50,6 +50,10 @@ The **explicit rule baseline** remains separately labeled for comparison and mak
 - PDF paragraph grouping/reading order, complex structures, transcription accuracy and final layout require review. All-region scope remains a requirement; successful processing or valid JSON does not establish complete terminology recall.
 
 Metadata records model IDs, request hashes, stage, cache use and reported token usage. `TERM_AGENT_MAX_CALLS` bounds operations; `TERM_AGENT_CHUNK_CHARS` controls batch size. Evidence-validated responses may be reused after failure. Free-tier limits can interrupt runs; partial work is not silently marked complete.
+
+Discovery now limits each batch to eight text units (`TERM_AGENT_CHUNK_UNITS`) and counts serialized unit metadata/context against the character budget, preserving all selected blocks and long-block overlapping ranges. One long unit can exceed that serialized budget. GPT-OSS discovery uses `reasoning_effort=low`; other stages retain model defaults. `TERM_AGENT_MAX_OUTPUT_TOKENS` sets the output budget (default 4096). More batches can require more calls and time. These settings reduce output pressure without certifying recall. In two synthetic probes with the same short input and 4096-token budget, default reasoning used 2817 completion tokens and low reasoning used 916; this is one comparison, not a general benchmark or proof that the document failures were caused by truncation.
+
+Provider JSON rejections are analyzed in memory for syntax/schema status and validation error types. Only structural summaries enter error messages/history; generated text, arbitrary field names and provider error bodies are withheld. `scripts/diagnose-groq.py` defaults to a dry run; `--live` explicitly sends at most two synthetic probes, not project documents.
 
 For HTTP 400 `json_validate_failed` from strict structured output, the adapter retries once with the same model and full input in JSON-object mode. Local schema and exact-source evidence validation remain required; a second failure stops the operation. Records identify format recovery and HTTP attempt count. One transient retry is also allowed (at most three HTTP requests per operation). Reported token usage includes only the successful response, so it is not a complete billing total for rejected attempts. This compatibility path has offline tests; actual provider success still requires live verification.
 

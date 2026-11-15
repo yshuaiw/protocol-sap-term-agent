@@ -10,3 +10,7 @@
 - Use Git CLI for small, reviewed commits and tags for verified demo versions. Keep API keys, local environments, caches, and personal runtime data out of version control.
 - Application history must persist with the local project and support transfer to the teammate's computer. Code Git history alone does not implement this feature.
 - Inspect available data and tools before asking the user to repeat confirmed requirements or investigate facts that can be checked locally. Record meaningful implementation choices and actual verification results in the project documentation.
+
+| Development rule | Verification guard |
+|---|---|
+| Bound discovery output pressure without dropping source spans: count serialized context/metadata, cap units per batch, and keep GPT-OSS discovery reasoning explicit. | `tests/test_discovery_budget.py`; real-provider success must be reported separately from simulated tests. |

@@ -1,5 +1,6 @@
 """Model discovery and semantic linking with deterministic evidence validation."""
 import hashlib
+import json
 
 from .client import ModelError
 from .schemas import Extraction, Links
@@ -14,7 +15,7 @@ def batches(items, size=20):
         yield items[start:start + size]
 
 
-def document_chunks(documents, budget):
+def document_chunks(documents, budget, max_units=8):
     pending, length = [], 0
     for doc in documents:
         blocks = doc['blocks']
@@ -28,11 +29,13 @@ def document_chunks(documents, budget):
                         'start': start, 'end': end, 'text': text[start:end],
                         'preceding_context': blocks[index - 1]['text'][-400:] if index else '',
                         'following_context': blocks[index + 1]['text'][:400] if index + 1 < len(blocks) else ''}
-                if pending and length + end - start > budget:
+                # Short blocks also require a full output record; contexts/IDs cost input tokens.
+                cost = len(json.dumps(unit, ensure_ascii=False))
+                if pending and (length + cost > budget or len(pending) >= max_units):
                     yield pending
                     pending, length = [], 0
                 pending.append(unit)
-                length += end - start
+                length += cost
                 if end == len(text):
                     break
     if pending:
@@ -40,7 +43,7 @@ def document_chunks(documents, budget):
 
 
 def generate_registry(project, client, run):
-    chunks = list(document_chunks(project['documents'], client.settings.chunk_chars))
+    chunks = list(document_chunks(project['documents'], client.settings.chunk_chars, client.settings.chunk_units))
     lookup = {b['id']: (d, b) for d in project['documents'] for b in d['blocks']}
     found = {}
     run.update(status='running', chunks_total=len(chunks), chunks_completed=0, candidates=0)

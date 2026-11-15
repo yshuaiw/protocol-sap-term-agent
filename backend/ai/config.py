@@ -44,6 +44,7 @@ class Settings:
     offline: bool = False
     max_calls: int = 500
     chunk_chars: int = 7000
+    chunk_units: int = 8
     max_output_tokens: int = 4096
 
     @classmethod
@@ -56,10 +57,13 @@ class Settings:
                    vision_model=env.get('GROQ_VISION_MODEL', cls.vision_model), pdf_mode=mode,
                    offline=env.get('TERM_AGENT_OFFLINE', '0') == '1',
                    max_calls=max(1, min(1000, int(env.get('TERM_AGENT_MAX_CALLS', '500')))),
-                   chunk_chars=max(1000, min(15000, int(env.get('TERM_AGENT_CHUNK_CHARS', '7000')))))
+                   chunk_chars=max(1000, min(15000, int(env.get('TERM_AGENT_CHUNK_CHARS', '7000')))),
+                   chunk_units=max(1, min(32, int(env.get('TERM_AGENT_CHUNK_UNITS', '8')))),
+                   max_output_tokens=max(512, min(16384, int(env.get('TERM_AGENT_MAX_OUTPUT_TOKENS', '4096')))))
 
     def public(self):
         return {'provider': 'groq', 'key_configured': bool(self.api_key), 'model': self.model,
                 'vision_model': self.vision_model, 'pdf_mode': self.pdf_mode, 'offline': self.offline,
                 'native_pdf': False, 'image_input': bool(self.vision_model), 'max_calls': self.max_calls,
-                'notice': 'Configured models and free-tier access have not been live-tested. Keys are backend-only.'}
+                'chunk_chars': self.chunk_chars, 'chunk_units': self.chunk_units, 'max_output_tokens': self.max_output_tokens,
+                'notice': 'Configuration does not verify credentials, quota, model access or document quality. Keys are backend-only.'}
