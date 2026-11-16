@@ -1,5 +1,5 @@
 from .client import ModelError
-from .schemas import Decisions, Interpretation, SemanticAudit, Boundaries
+from .schemas import Decisions, Interpretation, SemanticAudit
 from .workflow import batches
 from ..revisions import preview
 
@@ -69,12 +69,3 @@ def audit_export(project, export_id, client):
     return {'export_id': export_id, 'findings': findings, 'notes': notes,
             'configuration': client.settings.provenance(),
             'notice': 'Advisory model review, not independent proof of semantic correctness.', 'model_calls': client.records}
-
-
-def suggest_boundaries(hints, pages, client):
-    result = client.complete('boundaries', {'title_hints': hints, 'unit_count': pages}, Boundaries)
-    for item in result['documents']:
-        if not 1 <= item['start'] <= item['end'] <= pages or not any(item['evidence'] in h['evidence'] for h in hints):
-            raise ModelError('Boundary suggestion is outside the input or lacks exact title-page evidence.')
-    client.accept()
-    return result

@@ -10,6 +10,10 @@ from .schemas import VisionResult
 from ..docx_input import read_package
 
 
+def media_url(raw, mime):
+    return 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()
+
+
 def enrich_visual_text(project, folder, client, run):
     run['visual_units_completed'] = 0
     run['coverage_gaps'] = []
@@ -57,7 +61,7 @@ def enrich_visual_text(project, folder, client, run):
 
 
 def add_segments(doc, label, page, raw, mime, native, client, run, editable):
-    url = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()
+    url = media_url(raw, mime)
     payload = {'role': doc['role'], 'source_unit': label, 'native_text': native}
     if mime == 'application/pdf':
         payload.update(target_pdf_page=page, instruction='Transcribe ONLY this 1-based original PDF page. Ignore all other pages, including versions outside the selected range.')

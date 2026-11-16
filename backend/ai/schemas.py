@@ -84,18 +84,6 @@ class VisionResult(Strict):
     limitations: list[str] = Field(max_length=30)
 
 
-class Boundary(Strict):
-    role: Literal['Protocol', 'SAP', 'unknown']
-    start: int = Field(ge=1)
-    end: int = Field(ge=1)
-    evidence: str = Field(min_length=1, max_length=3000)
-
-
-class Boundaries(Strict):
-    documents: list[Boundary] = Field(max_length=20)
-    compatibility_note: str = Field(max_length=2000)
-
-
 class AuditItem(Strict):
     block_id: str
     concern: str = Field(min_length=1, max_length=2000)

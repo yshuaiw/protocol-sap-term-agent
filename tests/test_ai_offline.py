@@ -70,6 +70,9 @@ class ScriptedGroq:
             answer = {'segments': [], 'limitations': []}
         else:
             payload = json.loads(data)
+            if payload.get('phase') in ('scan', 'review'):
+                from tests.test_boundaries import BoundaryTransport
+                return BoundaryTransport()(request)
             if 'chunks' in payload:
                 mentions = []
                 for block in payload['chunks']:

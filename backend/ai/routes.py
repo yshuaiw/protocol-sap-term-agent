@@ -5,7 +5,8 @@ from starlette.concurrency import run_in_threadpool
 
 from .client import ModelClient, ModelError
 from .config import Settings
-from .review import audit_export, interpret_request, suggest_boundaries
+from .review import audit_export, interpret_request
+from .boundaries import suggest_boundaries
 from .vision import enrich_visual_text
 from .workflow import generate_registry
 from ..input_documents import inspect_input
@@ -111,8 +112,9 @@ def semantic_audit(pid: str, request: AuditRequest):
 async def inspect_with_ai(file: UploadFile = File(...)):
     from .. import main
     content = await main.read_upload(file)
-    info = inspect_input(content)
+    info = inspect_input(content, include_boundary_context=True)
+    inventory = info.pop('_boundary_inventory')
     client = new_client()
-    result = await run_in_threadpool(suggest_boundaries, info['boundary_hints'], info['pages'], client)
+    result = await run_in_threadpool(suggest_boundaries, inventory, client, content)
     return {**info, 'ai_suggestion': result, 'model_calls': client.records,
             'notice': 'Model suggestion only. Verify independent documents and version compatibility manually.'}

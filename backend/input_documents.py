@@ -10,11 +10,16 @@ def input_format(content):
     raise ValueError('Use an unlocked PDF or a macro-free DOCX document.')
 
 
-def inspect_input(content):
+def inspect_input(content, include_boundary_context=False):
     fmt = input_format(content)
     if fmt == 'docx':
-        return inspect_docx(content)
-    return {**inspect_pdf(content), 'format': 'pdf', 'unit_label': 'PDF page'}
+        info = inspect_docx(content)
+        if include_boundary_context:
+            from .boundary_inventory import make_inventory
+            info['_boundary_inventory'] = make_inventory([info['boundary_hints'][0]['evidence']], 'docx')
+            info['_boundary_inventory']['limitations'].append('DOCX boundary context contains initial paragraphs only; combined DOCX splitting is not supported.')
+        return info
+    return {**inspect_pdf(content, include_boundary_context), 'format': 'pdf', 'unit_label': 'PDF page'}
 
 
 def parse_input(content, role, start, end, name):

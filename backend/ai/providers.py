@@ -69,8 +69,8 @@ def request_spec(provider, model, key, stage, prompt, text, schema, tokens, imag
     body = {'model': model, 'messages': [{'role': 'system', 'content': prompt},
             {'role': 'user', 'content': content if images or pdf else text}], 'response_format': response_format,
             'max_completion_tokens' if provider in ('groq', 'openai') else 'max_tokens': tokens}
-    if provider == 'groq' and stage in ('discovery', 'discovery_repair') and model in ('openai/gpt-oss-20b', 'openai/gpt-oss-120b'):
-        body['reasoning_effort'] = 'low'
+    if provider == 'groq' and stage in ('discovery', 'discovery_repair', 'boundary_scan', 'boundary_review') and model in ('openai/gpt-oss-20b', 'openai/gpt-oss-120b'):
+        body['reasoning_effort'] = 'medium' if stage == 'boundary_review' else 'low'
     if provider in ('qwen', 'kimi'):
         body['enable_thinking' if provider == 'qwen' else 'thinking'] = False if provider == 'qwen' else {'type': 'disabled'}
     return '/chat/completions', {'Authorization': 'Bearer ' + key}, body, response_format['type']

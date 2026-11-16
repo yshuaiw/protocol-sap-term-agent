@@ -5,20 +5,18 @@ import re
 
 import pdfplumber
 from pypdf import PdfReader
+from .boundary_inventory import pdf_inventory, public_inventory
 
 
-def inspect_pdf(content: bytes) -> dict:
+def inspect_pdf(content: bytes, include_boundary_context=False) -> dict:
     reader = PdfReader(io.BytesIO(content))
     if reader.is_encrypted:
         raise ValueError('Encrypted PDFs are not supported; provide an unlocked copy.')
-    hints = []
-    for i, page in enumerate(reader.pages):
-        text = page.extract_text() or ''
-        head = text[:1600]
-        if re.search(r'statistical\s+analysis\s+plan|clinical\s+study\s+protocol', head, re.I):
-            hints.append({'page': i + 1, 'evidence': head[:700]})
-    return {'pages': len(reader.pages), 'boundary_hints': hints,
-            'notice': 'Hints are not confirmed document boundaries. Review title pages, versions and ranges.'}
+    inventory = pdf_inventory(reader)
+    info = public_inventory(inventory)
+    if include_boundary_context:
+        info['_boundary_inventory'] = inventory
+    return info
 
 
 def parse_pdf(content: bytes, role: str, start: int, end: int, name: str) -> dict:
