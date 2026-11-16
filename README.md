@@ -2,9 +2,7 @@
 
 Local FastAPI + React workspace for PDF/DOCX document pairs, AI terminology discovery and linking, reviewer corrections, per-occurrence naming approvals, separate revised Word files and portable project history.
 
-**Provider switching is implemented with separate text/visual settings and private local credentials.** Groq, Google, OpenAI, Anthropic, DeepSeek, Qwen and Kimi have offline-tested adapters. Only Groq has fresh live evidence: on 2026-11-15, three uncached requests completed discovery, linking and naming review on a synthetic native-text PDF pair (8 occurrences, 4 concepts; 6,794 reported tokens). Scripted reviewer actions approved two changes; separate revised Word files and a portable bundle passed deterministic verification, with original hashes unchanged. This is a synthetic sample workflow, not human semantic validation or general project completion. Vision/native PDF and the other providers have no live verification.
-
-The earlier larger native-text Groq sample (34 occurrences, 21 concept proposals, seven ambiguous associations) remains historical evidence: it reused validated captured discovery responses and made fresh linking requests. Automated tests always use scripted provider responses and do not establish model accuracy.
+Separate text/visual providers, local credentials, model-specific RPM caps, explicit cancellation and document-sourced explanations are implemented. Groq, Google, OpenAI, Anthropic, DeepSeek, Qwen and Kimi have offline-tested adapters. Only Groq has controlled live evidence, including a synthetic text-based register/review/export workflow with scripted approvals. Other providers and vision/native PDF remain live-unverified; synthetic success does not establish clinical accuracy or full-document recall. See the [verification workflow](guides/verification.md) for check selection and evidence boundaries.
 
 ## Windows setup
 
