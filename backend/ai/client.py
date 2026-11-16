@@ -16,6 +16,7 @@ from .diagnostics import rejected_output_summary
 
 from .prompts import SYSTEM, TASKS
 from .request_limits import REQUEST_LIMITER
+from ..operations import CURRENT, check, wait
 
 
 
@@ -97,6 +98,10 @@ class ModelClient:
         self.limiter = limiter if limiter is not None else (None if isinstance(transport, httpx.MockTransport) else REQUEST_LIMITER)
 
     def complete(self, stage, payload, schema, images=None, pdf=None):
+        check()
+        operation = CURRENT.get()
+        if operation:
+            operation.stage = stage
         self._pending_cache = None
         settings = self.settings
         if settings.offline:
@@ -125,9 +130,10 @@ class ModelClient:
         identity = json.dumps([stage, provider, model, settings.provenance(), schema.model_json_schema(), payload, images or [], pdf, prompt_version, simulation, ADAPTER_VERSION], sort_keys=True)
         digest = hashlib.sha256(identity.encode()).hexdigest()
         cache = self.cache_dir / (digest + '.json') if self.cache_dir else None
-        if cache and cache.is_file():
+        staged = operation.cache.get(cache) if operation and cache else None
+        if staged or cache and cache.is_file():
             try:
-                result = schema.model_validate_json(cache.read_text(encoding='utf-8'))
+                result = schema.model_validate_json(staged or cache.read_text(encoding='utf-8'))
             except (ValidationError, ValueError):
                 raise ModelError('Invalid local model cache; remove the affected ai-cache file and retry.') from None
             self.check_credentials(result)
@@ -151,11 +157,14 @@ class ModelClient:
             while True:
                 if self.limiter is not None:
                     rate_waited_seconds += self.limiter.acquire(provider, model, rpm)
+                check()
                 request_attempts += 1
                 try:
                     response = client.post(path, headers=headers, json=body)
                 except httpx.HTTPError:
+                    check()
                     raise ModelError(PROVIDERS[provider]['name'] + ' network/timeout error. Credentials and provider response bodies are withheld.') from None
+                check()
                 if response.status_code == 429 and rate_retries < 2:
                     delay = retry_delay(response)
                     if rate_waited + delay > 60:
@@ -165,11 +174,11 @@ class ModelClient:
                     if self.limiter is not None:
                         self.limiter.defer(provider, model, delay)
                     else:
-                        time.sleep(delay)
+                        wait(delay)
                     continue
                 if response.status_code in (500, 502, 503) and not transient_retry:
                     transient_retry = True
-                    time.sleep(retry_delay(response))
+                    wait(retry_delay(response))
                     continue
                 if response.status_code == 400 and strict and not format_recovery:
                     try:
@@ -219,8 +228,14 @@ class ModelClient:
 
     def accept(self):
         """Cache only after the caller has also checked source evidence and coverage IDs."""
+        check()
         if self._pending_cache:
             cache, payload = self._pending_cache
+            operation = CURRENT.get()
+            if operation:
+                operation.cache[cache] = payload
+                self._pending_cache = None
+                return
             try:
                 cache.parent.mkdir(exist_ok=True)
             except FileNotFoundError:

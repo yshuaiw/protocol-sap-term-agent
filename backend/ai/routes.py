@@ -9,6 +9,7 @@ from .review import audit_export, interpret_request
 from .boundaries import suggest_boundaries
 from .vision import enrich_visual_text
 from .workflow import generate_registry
+from .explanations import supplement
 from ..input_documents import inspect_input
 from ..registry import uid
 from ..store import LOCK, now
@@ -67,6 +68,9 @@ def generate(pid: str, request: RunRequest):
             raise ModelError('No readable native or visually transcribed content was produced.')
         if run['coverage_gaps']:
             run['status'] = 'completed_with_gaps'
+        run['explanations'] = supplement(working, client)
+        if run['explanations']['status'] == 'partial' or any(run['explanations']['counts'][s] for s in ('not_found', 'conflict')):
+            run['status'] = 'completed_with_gaps'
         run.update(finished=now(), calls=list(client.records))
         working.setdefault('ai_runs', []).append(run)
         working['plans'] = []
@@ -77,6 +81,23 @@ def generate(pid: str, request: RunRequest):
         run['error'] = str(exc)
         failed_run(pid, run, client)
         raise
+
+
+@router.post('/projects/{pid}/ai/explanations')
+def explanations(pid: str, request: RunRequest):
+    from .. import main
+    with LOCK:
+        working = main.load(pid)
+        main.guard(working, request.revision)
+        if not working['concepts']:
+            raise ModelError('Generate or add concepts before supplementing explanations.')
+    client = new_client(pid)
+    result = supplement(working, client)
+    working.setdefault('ai_runs', []).append({'id': uid(), 'stage': 'explanations', 'status': result['status'],
+        'finished': now(), 'configuration': client.settings.provenance(), 'calls': list(client.records), 'explanations': result})
+    with LOCK:
+        main.guard(main.load(pid), request.revision)
+        return main.store.save(working, 'Updated document-sourced explanation proposals; gaps and conflicts require review')
 
 
 @router.post('/projects/{pid}/ai/interpret')

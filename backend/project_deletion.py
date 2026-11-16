@@ -1,6 +1,7 @@
 """Checked removal of one project's internal files, never external copies/settings."""
 import os
 import shutil
+from contextlib import nullcontext
 
 from .project_lifecycle import ProjectMissing, ProjectStateError
 
@@ -21,7 +22,8 @@ def checked_folder(store, pid):
 
 def summary(store, pid):
     from .store import LOCK
-    if store.activity.busy(pid):
+    from .operations import OPERATIONS
+    if store.activity.non_llm_busy(pid):
         raise ProjectStateError('This project has an active operation. Wait for it to finish before deleting.')
     with LOCK:
         folder = checked_folder(store, pid)
@@ -32,7 +34,8 @@ def summary(store, pid):
                 'documents': [{'role': d['role'], 'name': d['name']} for d in project['documents']],
                 'concepts': len(project['concepts']), 'occurrences': len(project['mentions']),
                 'snapshots': sum(1 for p in (folder / 'snapshots').glob('*.json') if p.is_file()),
-                'exports': len(project['exports'])}
+                'exports': len(project['exports']),
+                'active_llm': OPERATIONS.active(pid)}
 
 
 def check_contents(folder):
@@ -45,9 +48,9 @@ def check_contents(folder):
                 raise ValueError('Project contains linked paths. Remove those links before deleting the project.')
 
 
-def delete(store, pid, revision):
+def delete(store, pid, revision, reserved=False):
     from .store import LOCK
-    with store.activity.deletion(pid), LOCK:
+    with (nullcontext() if reserved else store.activity.deletion(pid)), LOCK:
         folder = checked_folder(store, pid)
         project = store.load(pid)
         if project['revision'] != revision:

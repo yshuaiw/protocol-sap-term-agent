@@ -63,6 +63,13 @@ class Store:
         return self.save(project, 'Imported immutable original documents and indexed selected regions; AI generation not yet run')
 
     def save(self, project, action):
+        from .operations import CURRENT
+        operation = CURRENT.get()
+        if operation:
+            return operation.commit(lambda: self._save(project, action))
+        return self._save(project, action)
+
+    def _save(self, project, action):
         folder = self.folder(project['id'])
         if not folder.is_dir():
             raise ProjectMissing('Project no longer exists. Stale changes were not saved.')

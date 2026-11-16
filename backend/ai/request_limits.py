@@ -4,6 +4,7 @@ import time
 from collections import deque
 
 from .rate_policy import valid_rpm
+from ..operations import check, CURRENT
 
 
 class RequestLimiter:
@@ -17,6 +18,7 @@ class RequestLimiter:
             raise ValueError('RPM must be an integer from 1 to 1000.')
         started = self.clock()
         while True:
+            check()
             with self.lock:
                 now = self.clock()
                 bucket = self.buckets.setdefault((provider, model), {'events': deque(), 'cooldown': 0})
@@ -35,7 +37,11 @@ class RequestLimiter:
                     events.append((now, rpm))
                     return max(0, now - started)
             # Never hold the lock during a wait: other models/providers remain independent.
-            self.sleep(min(delay, 1))
+            operation = CURRENT.get()
+            if operation:
+                operation.wait(min(delay, 1))
+            else:
+                self.sleep(min(delay, 1))
 
     def defer(self, provider, model, seconds):
         with self.lock:

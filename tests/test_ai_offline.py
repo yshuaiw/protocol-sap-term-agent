@@ -73,6 +73,16 @@ class ScriptedGroq:
             if payload.get('phase') in ('scan', 'review'):
                 from tests.test_boundaries import BoundaryTransport
                 return BoundaryTransport()(request)
+            if 'explanation_targets' in payload:
+                answer = {'concepts': [{'concept_id': target['id'], 'missing_reason': '', 'claims': [
+                    {'statement': block['text'], 'kind': 'explicit', 'evidence': [{'block_id': block['block_id'],
+                     'quote': block['text'], 'support': 'The sentence states the treatment and dose of this arm.'}]}
+                    for block in payload['source_ranges'] if 'receives' in block['text']]}
+                    for target in payload['explanation_targets']]}
+                return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(answer)}}]})
+            if 'claims' in payload:
+                return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps({
+                    'relationship': 'complementary', 'reason': 'Fixture details describe the same treatment in each document.'})}}]})
             if 'chunks' in payload:
                 mentions = []
                 for block in payload['chunks']:
@@ -170,7 +180,7 @@ def test_ai_api_contract_roundtrip_without_external_calls(app):
     assert response.status_code == 200, response.text
     p = response.json()
     assert p['engine'] == 'groq-ai-v1'
-    assert {r['stage'] for r in p['ai_runs'][-1]['calls']} == {'discovery', 'linking'}
+    assert {r['stage'] for r in p['ai_runs'][-1]['calls']} == {'discovery', 'linking', 'explanation_scan', 'explanation_relation'}
     assert p['ai_runs'][-1]['chunks_completed'] == p['ai_runs'][-1]['chunks_total']
     assert len(p['mentions']) == 10 and len(p['concepts']) == 1
     cid = p['concepts'][0]['id']

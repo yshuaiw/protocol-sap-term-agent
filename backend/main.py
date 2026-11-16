@@ -21,6 +21,8 @@ from .revisions import patch_blocks, preview
 from .store import LOCK, Store
 from .project_lifecycle import ProjectOperationMiddleware
 from .project_routes import router as project_router
+from .operation_routes import router as operation_router, OperationMiddleware
+from .explanation_routes import router as explanation_router
 
 ROOT = Path(__file__).resolve().parents[1]
 store = Store(os.environ.get('TERM_AGENT_DATA', ROOT / 'data' / 'projects'))
@@ -28,7 +30,10 @@ app = FastAPI(title='Protocol SAP Terminology Agent', version='0.2.0')
 app.include_router(ai_router)
 app.include_router(settings_router)
 app.include_router(project_router)
+app.include_router(operation_router)
+app.include_router(explanation_router)
 app.add_middleware(ProjectOperationMiddleware, store_getter=lambda: store)
+app.add_middleware(OperationMiddleware, store_getter=lambda: store)
 
 
 @app.exception_handler(ValueError)
