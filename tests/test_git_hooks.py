@@ -10,14 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.fixture
-def repo(tmp_path):
-    path = tmp_path / 'checkout with spaces'
-    path.mkdir()
-    for name in ('.githooks/pre-commit', 'scripts/check-file-size.py', 'scripts/install-hooks.py'):
-        target = path / name
-        target.parent.mkdir(exist_ok=True)
-        shutil.copy2(ROOT / name, target)
+def runner(path):
     env = {**os.environ, 'TERM_AGENT_HOOK_PYTHON': sys.executable,
            'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': os.devnull,
            'GIT_AUTHOR_NAME': 'Hook Test', 'GIT_AUTHOR_EMAIL': 'hook@example.invalid',
@@ -25,13 +18,32 @@ def repo(tmp_path):
 
     def run(*args):
         return subprocess.run(args, cwd=path, env=env, capture_output=True, text=True, encoding='utf-8')
+    return run
+
+
+@pytest.fixture(scope='module')
+def repo_template(tmp_path_factory):
+    path = tmp_path_factory.mktemp('pristine hook repository')
+    for name in ('.githooks/pre-commit', 'scripts/check-file-size.py', 'scripts/install-hooks.py'):
+        target = path / name
+        target.parent.mkdir(exist_ok=True)
+        shutil.copy2(ROOT / name, target)
+    run = runner(path)
 
     assert run('git', 'init', '-q').returncode == 0
     assert run(sys.executable, 'scripts/install-hooks.py').returncode == 0
     assert run('git', 'config', '--get', 'core.hooksPath').stdout.strip() == '.githooks'
     assert run('git', 'add', '.').returncode == 0
     assert run('git', 'commit', '-qm', 'Install guard').returncode == 0
-    return path, run
+    return path
+
+
+@pytest.fixture
+def repo(tmp_path, repo_template):
+    # Copy the complete .git directory: tests must never share mutable refs/index/config.
+    path = tmp_path / 'checkout with spaces'
+    shutil.copytree(repo_template, path)
+    return path, runner(path)
 
 
 def test_oversized_staged_commit_rejected_then_split_commit_succeeds(repo):

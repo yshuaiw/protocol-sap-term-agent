@@ -94,23 +94,13 @@ For Groq HTTP 400 `json_validate_failed` from strict output, the adapter retries
 
 ## Offline checks
 
-Setup installs the versioned `.githooks/pre-commit` hook for this checkout. Existing checkouts can run `.venv/Scripts/python.exe scripts/install-hooks.py` (macOS: `.venv/bin/python`). An existing unrelated hook configuration is retained and requires integration. Source blobs larger than 20,000 staged bytes are rejected; split by responsibility and retry. Lockfiles and explicitly named generated/build files are exempt; unstaged edits do not affect the check. `TERM_AGENT_HOOK_PYTHON` can select an interpreter for separate tooling environments. `frontend/src/main.jsx` now owns navigation only; registry, review, document/history and settings screens are split by responsibility.
+Use the [verification workflow](guides/verification.md) for commands and the test/browser selection map. Run affected tests while iterating and the full offline suite before delivery. Tests block external connections and use scripted model responses; they verify real local parsing, persistence, approvals and new-file export, not model accuracy.
 
-```powershell
-.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
-.venv/Scripts/python.exe -m pytest -q
-node --test frontend/tests/source-text.test.js
-cd frontend
-node node_modules/vite/bin/vite.js build
-```
-
-Tests deny external socket connections and use `httpx.MockTransport` for model contracts. They exercise real local persistence, parsing, new-file export, unchanged source bytes and approval guards. Scripted answers test plumbing and evidence checks, **not model accuracy**. `requirements-lock.txt` records the tested Python environment; the pnpm lockfile fixes frontend dependency resolution.
-
-For one small browser smoke flow, install Playwright separately in a tooling environment and expose it via `PLAYWRIGHT_MODULE` or `NODE_PATH`. Run `scripts/make-fixtures.py`, start `scripts/serve-offline-fixture.py`, then set `DEMO_URL=http://127.0.0.1:8766` and run `node scripts/browser-smoke.cjs`. Also run `node scripts/browser-project-deletion.cjs` to test cancellation, permanent removal of a newly created populated project, a same-name neighbor, stale confirmation/tab handling and mobile layout. It deletes only its own newly created fixture projects and retains a downloaded ZIP; never point it at a real project server. Run `node scripts/browser-settings.cjs` for separate task selection, reload persistence, credential save/replace/delete, no key echo and mobile settings checks. All browser scripts refuse servers without the offline-fixture marker. The fixture uses a dummy key, scripted transports, isolated `tmp/` project and settings storage and an external-socket block. Never use it for real projects or report its results as model quality. Settings screenshots stay in local `output/screenshots/provider-settings/`; workflow smoke artifacts use a fresh `output/browser-smoke-<timestamp>/` folder (or `BROWSER_OUTPUT_DIR`) so previous runs are retained.
+Setup installs the versioned size hook. Existing checkouts can run `python scripts/install-hooks.py`; unrelated hooks are retained. The staged-source limit and splitting rule are in [AGENTS.md](AGENTS.md).
 
 ## Opt-in live sample
 
-After offline verification, `.venv/Scripts/python.exe scripts/live-provider-smoke.py --live` exercises a fresh synthetic PDF pair, real Groq text discovery/linking/review, scripted approval, new Word outputs and bundle privacy. Without `--live` it makes no requests. It refuses non-Groq text selection, missing credentials and offline mode. It uses isolated `tmp/` projects and writes evidence under local `output/live-provider-*/`; it does not modify existing projects, credentials or billing. This script makes real calls and does not attest account tier: run it only within your authorized Groq allowance. Other providers need separate credential/budget authorization before live verification.
+Real synthetic Groq checks are separate from offline/browser tests and default to dry runs. See [real API checks](guides/verification.md#real-api-checks-are-separate-and-opt-in) for the appropriate script and authorization limits. UI/documentation changes do not require fresh model calls.
 
 ## Storage and other platforms
 

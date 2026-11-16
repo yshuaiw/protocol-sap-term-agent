@@ -12,6 +12,7 @@
 - Inspect available data and tools before asking the user to repeat confirmed requirements or investigate facts that can be checked locally. Record meaningful implementation choices and actual verification results in the project documentation.
 - Before adding a function or rule, search the existing implementation for an equivalent responsibility.
 - If the pre-commit size guard rejects a file, split it by responsibility, stage the smaller files and retry; see `scripts/check-file-size.py` for the 20,000-byte limit and generated-file exemptions.
+- Select checks using [the verification workflow](guides/verification.md): affected tests during iteration, full offline suite before delivery, browser flows by impact, live calls only when new provider evidence is needed. Do not repeat unchanged passing checks without a code change, failure or unresolved concern.
 
 | Development rule | Verification guard |
 |---|---|
