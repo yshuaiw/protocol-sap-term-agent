@@ -10,6 +10,8 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .project_lifecycle import ProjectActivity, ProjectMissing
+
 LOCK = threading.RLock()
 MAX_BUNDLE = 200 * 1024 * 1024
 
@@ -22,6 +24,7 @@ class Store:
     def __init__(self, root):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self.activity = ProjectActivity()
 
     def folder(self, pid):
         if not re.fullmatch(r'[0-9a-f]{32}', pid):
@@ -32,12 +35,21 @@ class Store:
         try:
             return json.loads((self.folder(pid) / 'project.json').read_text(encoding='utf-8'))
         except FileNotFoundError:
-            raise ValueError('Project not found.')
+            raise ProjectMissing('Project no longer exists. Reload the project list.') from None
 
     def list(self):
-        return sorted([{'id': p['id'], 'name': p['name'], 'revision': p['revision'], 'updated': p['updated']}
-                       for f in self.root.glob('*/project.json') for p in [json.loads(f.read_text(encoding='utf-8'))]],
-                      key=lambda p: p['updated'], reverse=True)
+        with LOCK:
+            return sorted([{'id': p['id'], 'name': p['name'], 'revision': p['revision'], 'updated': p['updated']}
+                           for f in self.root.glob('*/project.json') for p in [json.loads(f.read_text(encoding='utf-8'))]],
+                          key=lambda p: p['updated'], reverse=True)
+
+    def deletion_summary(self, pid):
+        from .project_deletion import summary
+        return summary(self, pid)
+
+    def delete(self, pid, revision):
+        from .project_deletion import delete
+        return delete(self, pid, revision)
 
     def create(self, name, documents, inputs, version_note):
         pid = uuid.uuid4().hex
@@ -52,7 +64,9 @@ class Store:
 
     def save(self, project, action):
         folder = self.folder(project['id'])
-        (folder / 'snapshots').mkdir(parents=True, exist_ok=True)
+        if not folder.is_dir():
+            raise ProjectMissing('Project no longer exists. Stale changes were not saved.')
+        (folder / 'snapshots').mkdir(exist_ok=True)
         project['revision'] += 1
         project['updated'] = now()
         project['history'].append({'revision': project['revision'], 'time': project['updated'], 'action': action})

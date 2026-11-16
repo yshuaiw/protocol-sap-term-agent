@@ -19,18 +19,22 @@ from .exporting import export_pair
 from .registry import CATEGORIES, build_registry, reindex_after_edits, rescan, uid
 from .revisions import patch_blocks, preview
 from .store import LOCK, Store
+from .project_lifecycle import ProjectOperationMiddleware
+from .project_routes import router as project_router
 
 ROOT = Path(__file__).resolve().parents[1]
 store = Store(os.environ.get('TERM_AGENT_DATA', ROOT / 'data' / 'projects'))
 app = FastAPI(title='Protocol SAP Terminology Agent', version='0.2.0')
 app.include_router(ai_router)
 app.include_router(settings_router)
+app.include_router(project_router)
+app.add_middleware(ProjectOperationMiddleware, store_getter=lambda: store)
 
 
 @app.exception_handler(ValueError)
 async def invalid_request(request, exc):
     from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=400, content={'detail': str(exc)})
+    return JSONResponse(status_code=getattr(exc, 'status_code', 400), content={'detail': str(exc)})
 
 
 class Strict(BaseModel):

@@ -225,7 +225,10 @@ class ModelClient:
         """Cache only after the caller has also checked source evidence and coverage IDs."""
         if self._pending_cache:
             cache, payload = self._pending_cache
-            cache.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                cache.parent.mkdir(exist_ok=True)
+            except FileNotFoundError:
+                raise ModelError('The model cache directory no longer exists. No deleted project was recreated.') from None
             cache.write_text(payload, encoding='utf-8')
             self._pending_cache = None
 
