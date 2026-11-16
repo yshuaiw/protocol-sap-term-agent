@@ -10,3 +10,16 @@
 
 .boundary-review{min-width:0}.boundary-file{border-top:1px solid #d7dfe2;padding:20px 0}.boundary-file>p{white-space:pre-wrap}.boundary-candidate{padding:16px 0;border-bottom:1px solid #dce2e4}.boundary-candidate .section-header{margin:0}.boundary-candidate .checkbox{margin:14px 0}.boundary-candidate>button{margin-top:12px}.boundary-file>.primary{margin-top:18px}.boundary-review details p{overflow-wrap:anywhere}.boundary-file h3{font-size:14px}
 .rate-fields{border:0;padding:0;margin:0;min-width:0}.rate-fields>label{max-width:650px;margin:18px 0}.rate-limits details button{max-width:100%;overflow-wrap:anywhere;text-align:left}
+
+.operation-panel { margin: 18px 28px; padding: 16px 20px; background: #edf4f3; border: 1px solid #bed2cf; border-radius: 4px; }
+.operation-panel p { margin: 10px 0; }
+.operation-row { display: flex; gap: 16px; justify-content: space-between; align-items: center; margin: 12px 0; }
+.operation-row span { overflow-wrap: anywhere; }
+.operation-row small { display: block; }
+.explanation-actions, .explanations { padding: 20px; margin: 20px 0; border: 1px solid #d6dfdf; border-radius: 4px; }
+.explanation-claim { margin: 18px 0; padding: 16px; border-bottom: 1px solid #d6dfdf; overflow-wrap: anywhere; }
+.explanation-source { margin: 14px 0; }
+.explanation-source blockquote, .explanations blockquote { white-space: pre-wrap; margin: 12px 0; padding: 10px 14px; border-left: 2px solid #c3cdcb; }
+.explanation-claim label { display: block; margin: 12px 0; }
+.explanation-claim textarea, .explanation-claim select { width: 100%; }
+@media (max-width: 600px) { .operation-panel { margin: 12px; padding: 12px; } .operation-row { align-items: stretch; flex-direction: column; } .explanation-actions, .explanations { padding: 12px; } }

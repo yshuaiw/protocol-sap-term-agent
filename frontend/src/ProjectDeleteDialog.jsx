@@ -14,7 +14,7 @@ export function ProjectDeleteDialog({projectId, onClose, onDeleted}) {
   async function remove() {
     setDeleting(true); setError('');
     try {
-      await api(`/projects/${projectId}`, 'DELETE', {revision:details.revision, confirmed:true});
+      await api(`/projects/${projectId}`+(details.active_llm?.length?'/cancel-delete':''), details.active_llm?.length?'POST':'DELETE', {revision:details.revision, confirmed:true});
       onDeleted(projectId);
     } catch(e) {
       setDetails(null); setError(e.message);
@@ -35,12 +35,13 @@ export function ProjectDeleteDialog({projectId, onClose, onDeleted}) {
       <p>{details.concepts} concepts · {details.occurrences} occurrences · {details.snapshots} history snapshots · {details.exports} exports</p>
       <p>This permanently removes the register, all history, AI cache and run records, previews and approvals, generated files, and source copies stored in this project.</p>
       <p>External originals, downloaded ZIP/Word files, other projects and API settings are kept. <strong>You cannot undo this in the app.</strong></p>
+      {details.active_llm?.length>0&&<p className="callout">This project has active LLM work. Confirmation cancels it and waits for local work to stop before deleting. Submitted provider requests may still consume tokens. A changed project requires a new confirmation.</p>}
     </>}
-    {deleting && <p role="status">Deleting project files…</p>}
+    {deleting && <p role="status">{details?.active_llm?.length?'Cancelling LLM work; waiting to delete project files…':'Deleting project files…'}</p>}
     <div className="actions delete-actions">
       <button type="button" autoFocus disabled={deleting} onClick={onClose}>Cancel</button>
       {!details && !loading && <button type="button" disabled={deleting} onClick={reload}>Refresh project details</button>}
-      <button type="button" className="danger" disabled={loading || deleting || !details} onClick={remove}>Permanently delete</button>
+      <button type="button" className="danger" disabled={loading || deleting || !details} onClick={remove}>{details?.active_llm?.length?'Cancel tasks and permanently delete':'Permanently delete'}</button>
     </div>
   </dialog>;
 }

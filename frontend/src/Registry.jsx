@@ -3,6 +3,7 @@ import {api} from './api';
 import {projectPath, downloadPath} from './paths';
 import {AiPanel} from './AiPanel';
 import {sourceSlice} from './sourceText';
+import {Explanations,ExplanationActions} from './Explanations';
 
 export function Registry({project:p,run,busy,onReview}) {
   const [query,setQuery]=useState(''), [selected,setSelected]=useState(null), [adding,setAdding]=useState(false);
@@ -11,9 +12,10 @@ export function Registry({project:p,run,busy,onReview}) {
   return <><div className="section-header"><div><h1>Terminology register</h1><p className="muted">{p.concepts.length} concepts · {p.mentions.length} occurrences · {p.mentions.filter(m=>m.status==='unresolved').length} unresolved</p></div><div className="actions"><a className="button" href={downloadPath(p,'/registry.json')}>Download register</a><button onClick={()=>setAdding(!adding)}>Add concept</button></div></div>
     <div className="callout">AI proposals and explicit rule baselines require evidence review; neither certifies complete recall. Confirm concepts only after checking occurrences, including abbreviation collisions. Registry corrections leave document text unchanged.</div>
     <AiPanel project={p} run={run} busy={busy}/>
+    <ExplanationActions project={p} run={run} busy={busy}/>
     {adding&&<ConceptForm key="new" project={p} run={run} busy={busy} onSaved={()=>setAdding(false)}/>}
     <div className="registry-layout"><section className="register-list"><label className="search-label">Find a term<input type="search" placeholder="Name or alias" value={query} onChange={e=>setQuery(e.target.value)}/></label><div className="terms">{concepts.map(c=><button key={c.id} onClick={()=>{setSelected(c.id);setAdding(false);}} className={concept?.id===c.id?'term selected':'term'}><strong>{c.name}</strong><span>{c.category} · {c.confirmed?'confirmed':'needs review'} · {p.mentions.filter(m=>m.concept_id===c.id).length} matches</span>{c.aliases.length>0&&<small>{c.aliases.join(', ')}</small>}</button>)}{!concepts.length&&<p>No matches. Add a concept to index its forms throughout the documents.</p>}</div></section>
-      {concept&&<section className="evidence-panel"><ConceptForm key={concept.id+':'+p.revision} project={p} concept={concept} run={run} busy={busy}/><div className="section-header"><h2>Occurrences and evidence</h2><button onClick={()=>onReview(concept.id)}>Plan replacement</button></div><OccurrenceList key={concept.id} project={p} concept={concept} run={run} busy={busy}/></section>}
+      {concept&&<section className="evidence-panel"><ConceptForm key={concept.id+':'+p.revision} project={p} concept={concept} run={run} busy={busy}/><Explanations project={p} concept={concept} run={run} busy={busy}/><div className="section-header"><h2>Occurrences and evidence</h2><button onClick={()=>onReview(concept.id)}>Plan replacement</button></div><OccurrenceList key={concept.id} project={p} concept={concept} run={run} busy={busy}/></section>}
     </div></>;
 }
 

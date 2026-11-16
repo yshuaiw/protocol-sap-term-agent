@@ -10,24 +10,29 @@ import {Coverage, History} from './ProjectDetails';
 import {ApiSettings} from './ApiSettings';
 import {projectPath} from './paths';
 import {ProjectDeleteDialog} from './ProjectDeleteDialog';
+import {OperationPanel} from './OperationPanel';
 
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [activeOperations,setActiveOperations]=useState([]);
   const [projects, setProjects] = useState([]), [project, setProject] = useState(null);
   const [tab, setTab] = useState('registry'), [importing, setImporting] = useState(false), [reviewConcept,setReviewConcept]=useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const projectBusy=busy||activeOperations.some(o=>o.project_id===project?.id);
   async function refresh(){
     const list = await api('/projects'); setProjects(list);
     setProject(current=>current && list.some(p=>p.id===current.id) ? current : null);
+    return list;
   }
   useEffect(()=>{refresh().catch(e=>setError(e.message));},[]);
   async function run(action, success='') {
     setBusy(true); setError(''); setNotice('');
     try {const result = await action(); if (result?.documents) {setProject(result); setImporting(false);} await refresh(); if(success)setNotice(success); return result;}
     catch(e) {
-      setError(e.message);
-      if(project){try{setProject(await api(projectPath(project)));}catch(loadError){if(loadError.status===404)setProject(null);}}
+      if(e.cancelled)setNotice('LLM operation cancelled; no new results, history or cache saved.');
+      else setError(e.message);
+      if(project&&!e.cancelled){try{setProject(await api(projectPath(project)));}catch(loadError){if(loadError.status===404)setProject(null);}}
       try{await refresh();}catch{}
       return null;
     } finally {setBusy(false);}
@@ -39,6 +44,12 @@ function App() {
     refresh().catch(e=>setError(e.message));
   }
   async function select(id){setSettingsOpen(false);await run(()=>api('/projects/' + id)); setTab('registry');}
+  async function operationSettled(ended){
+    const list=await refresh();
+    if(project&&list.some(p=>p.id===project.id&&p.revision!==project.revision)&&ended.some(o=>o.project_id===project.id)){
+      try{setProject(await api(projectPath(project)));}catch(e){if(e.status===404)setProject(null);}
+    }
+  }
   async function transfer(event) {
     const file = event.target.files[0]; if(!file)return;
     const form = new FormData(); form.append('file',file);
@@ -53,17 +64,18 @@ function App() {
       <label className="file-button">Open project bundle<input aria-label="Open project bundle" type="file" accept=".zip" onChange={transfer} disabled={busy}/></label>
       <button className="settings-button" disabled={busy} onClick={()=>{setSettingsOpen(true);setError('');setNotice('');}}>API settings</button>
       <h2 className="sidebar-heading">Saved projects</h2>
-      <div className="project-list">{projects.length ? projects.map(p=><div className="project-entry" data-project-id={p.id} key={p.id}><button className={project?.id===p.id&&!importing?'project-item selected':'project-item'} onClick={()=>select(p.id)} disabled={busy}><strong>{p.name}</strong><span>Revision {p.revision} · {new Date(p.updated).toLocaleDateString()}</span></button><button className="project-delete-trigger" disabled={busy} aria-label={'Delete project '+p.name} onClick={()=>{setDeleteId(p.id);setError('');}}>Delete</button></div>):<p className="muted">Your projects will stay on this computer until you export a bundle.</p>}</div>
+      <div className="project-list">{projects.length ? projects.map(p=><div className="project-entry" data-project-id={p.id} key={p.id}><button className={project?.id===p.id&&!importing?'project-item selected':'project-item'} onClick={()=>select(p.id)} disabled={busy}><strong>{p.name}</strong><span>Revision {p.revision} · {new Date(p.updated).toLocaleDateString()}</span></button><button className="project-delete-trigger" aria-label={'Delete project '+p.name} onClick={()=>{setDeleteId(p.id);setError('');}}>Delete</button></div>):<p className="muted">Your projects will stay on this computer until you export a bundle.</p>}</div>
       <div className="sidebar-bottom">Local workspace · v0.2<br/>AI services · explicit actions</div>
     </aside>
     <main aria-busy={busy}>
       <header className="topbar"><div>{settingsOpen?'API settings':importing?'New project':project?.name||'Your workspace'}</div>{project&&!importing&&!settingsOpen&&<span>Revision {project.revision}<button onClick={()=>run(()=>api(projectPath(project)))} disabled={busy}>Reload</button></span>}</header>
       {error&&<div role="alert" className="alert error">{error}<button onClick={()=>setError('')} aria-label="Dismiss error">×</button></div>}
       {notice&&<div role="status" className="alert success">{notice}</div>}
+      <OperationPanel onSettled={operationSettled} onActivity={setActiveOperations}/>
       {busy&&<div role="status" className="busy">Processing locally. Large documents and Word exports may take a few minutes…</div>}
-      {settingsOpen?<div className="content"><ApiSettings onClose={()=>setSettingsOpen(false)}/></div>:importing?<ImportForm run={run} busy={busy}/>:project?<>
+      {settingsOpen?<div className="content"><ApiSettings onClose={()=>setSettingsOpen(false)}/></div>:importing?<ImportForm run={run} busy={busy||activeOperations.some(o=>!o.project_id)}/>:project?<>
         <nav className="tabs" aria-label="Workflow">{[['registry','Terminology register'],['review','Replacement review'],['coverage','Documents & coverage'],['history','History & transfer']].map(([key,label])=><button key={key} className={tab===key?'active':''} onClick={()=>setTab(key)}>{label}</button>)}</nav>
-        <div className="content">{tab==='registry'?<Registry project={project} run={run} busy={busy} onReview={cid=>{setReviewConcept(cid);setTab('review');}}/>:tab==='review'?<Review project={project} run={run} busy={busy} initialConcept={reviewConcept}/>:tab==='coverage'?<Coverage project={project}/>:<History project={project} run={run} busy={busy}/>}</div>
+        <div className="content">{tab==='registry'?<Registry project={project} run={run} busy={projectBusy} onReview={cid=>{setReviewConcept(cid);setTab('review');}}/>:tab==='review'?<Review project={project} run={run} busy={projectBusy} initialConcept={reviewConcept}/>:tab==='coverage'?<Coverage project={project}/>:<History project={project} run={run} busy={projectBusy}/>}</div>
       </>:<div className="welcome"><h1>Keep terminology consistent across documents.</h1><p>Import a Protocol and an independent SAP as PDF or DOCX. Review the terminology register, approve each proposed change, then export separate Word copies.</p><button className="primary" onClick={()=>setImporting(true)}>Start with your documents</button><div className="welcome-note"><strong>Prepared for local review</strong><p>Original files, registry corrections and approval history stay together. Export a project bundle to continue on another computer.</p></div></div>}
     </main>
     {deleteId && <ProjectDeleteDialog key={deleteId} projectId={deleteId} onClose={()=>{setDeleteId(null);refresh().catch(e=>setError(e.message));}} onDeleted={deleted}/>}

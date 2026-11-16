@@ -39,8 +39,8 @@ export function ImportForm({run, busy}) {
       for (const [i,file] of files.entries()) {
         const data = new FormData(); data.append('file', file);
         details[i] = await api('/inspect/ai', 'POST', data);
-        setInfo([...details]);setSuggestionNotice(boundaryNotice(details));
       }
+      setInfo([...details]);setSuggestionNotice(boundaryNotice(details));
     });
   }
   function useSuggestions(suggestions) {

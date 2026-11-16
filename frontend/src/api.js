@@ -10,7 +10,12 @@ export async function api(path, method = 'GET', data) {
     const error = await response.json().catch(() => ({detail: response.statusText}));
     const failure = new Error(typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail));
     failure.status = response.status;
+    failure.cancelled = !!error.cancelled;
     throw failure;
   }
-  return response.json();
+  const result = await response.json();
+  if(result?.cancelled){
+    const failure = new Error(result.detail);failure.cancelled=true;throw failure;
+  }
+  return result;
 }
