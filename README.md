@@ -49,6 +49,8 @@ Adapter references: [Groq JSON](https://console.groq.com/docs/structured-outputs
 
 ## Workflow
 
+For combined PDFs, see [boundary review](guides/boundary-review.md): all-page structure indexing, expanded AI review, optional unreadable-page transcription, visible evidence and explicit range application. Empty results are labelled unresolved; an embedded statistics chapter is not an independent SAP.
+
 1. Import separate Protocol/SAP files: two PDFs, two DOCX files or a mixed pair. A combined **PDF** supports nonoverlapping page ranges. **DOCX imports the whole document**; split combined DOCX documents first. Review titles, versions and optional AI boundary advice; model advice does not certify compatibility.
 2. Save originals, then explicitly generate the AI register. Every text block is submitted in bounded discovery batches, followed by semantic linking against a concept ledger. Proposed evidence must match anchored source text. Invalid or missing batch decisions fail the run without replacing the existing register. History retains earlier states.
 3. Review standard names, aliases and occurrence associations. Same spelling does not prove identity. Model links require human confirmation; visual transcriptions require individual source comparison before modification.
