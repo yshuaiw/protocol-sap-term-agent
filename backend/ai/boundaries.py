@@ -1,7 +1,7 @@
 """AI structure scan/review with exact program-owned evidence references."""
 from collections import Counter
 
-from .boundary_context import call, review_payloads, scan_payloads, supplement_unreadable
+from .boundary_context import review_payloads, scan_payloads, supplement_unreadable
 from .boundary_schemas import BoundaryRanges, BoundaryStarts
 
 
@@ -39,7 +39,7 @@ def suggest_boundaries(inventory, client, content=None):
     unreadable = [p['page'] for p in inventory['pages'] if not p['native_readable']]
     visual_pages = supplement_unreadable(inventory, content, client) if content is not None else []
     for payload in scan_payloads(inventory, client):
-        response = call(client, 'boundary_scan', payload, BoundaryStarts)
+        response = client.complete('boundary_scan', payload, BoundaryStarts)
         allowed = {s['id'] for p in payload['pages'] for s in p['sources']}
         for candidate in response['candidates']:
             if candidate['source_id'] not in allowed:
@@ -58,7 +58,7 @@ def suggest_boundaries(inventory, client, content=None):
     review = sorted((c for c in candidates.values() if c['kind'] != 'reference'),
                     key=lambda c: (inventory['sources'][c['source_id']]['page'], c['source_id']))
     for payload in review_payloads(inventory, review, client):
-        response = call(client, 'boundary_review', payload, BoundaryRanges)
+        response = client.complete('boundary_review', payload, BoundaryRanges)
         documents.extend(_validated_rows(response, payload, inventory, issues))
         notes.append(response['compatibility_note'])
         client.accept()

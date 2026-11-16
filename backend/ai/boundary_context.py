@@ -1,10 +1,7 @@
 """Bounded boundary context and optional visual evidence; no role/range heuristics."""
 import io
 import json
-import threading
-import time
 
-import httpx
 import pdfplumber
 
 from ..boundary_inventory import add_source
@@ -12,25 +9,6 @@ from .boundary_schemas import BoundaryVisuals
 from .client import ModelError
 from .providers import PROVIDERS
 from .vision import media_url
-
-_PACE_LOCK = threading.Lock()
-_GOOGLE_START = {}
-
-
-def call(client, stage, payload, schema, **media):
-    visual = bool(media.get('images') or media.get('pdf'))
-    provider = client.settings.vision_provider if visual else client.settings.provider
-    model = client.settings.vision_model if visual else client.settings.model
-    if provider == 'google' and not isinstance(client.transport, httpx.MockTransport):
-        # Boundary-only pacing, shared across inspection requests in this process.
-        # Do not claim to manage other apps, project token quotas or discovery pacing.
-        with _PACE_LOCK:
-            delay = max(0, 13 - (time.monotonic() - _GOOGLE_START.get(model, -1000)))
-            if delay:
-                time.sleep(delay)
-            _GOOGLE_START[model] = time.monotonic()
-    return client.complete(stage, payload, schema, **media)
-
 
 def budget(client):
     return min(14000, max(4000, client.settings.chunk_chars * 2))
@@ -77,7 +55,7 @@ def supplement_unreadable(inventory, content, client):
             payload = {'phase': 'visual_structure', 'target_pages': page_ids,
                        'instruction': 'Read only these original PDF page numbers. Keep every requested page, including blank/unreadable pages. No role/range decisions.'}
             if native_pdf:
-                response = call(client, 'boundary_vision', payload, BoundaryVisuals,
+                response = client.complete('boundary_vision', payload, BoundaryVisuals,
                                 pdf=media_url(content, 'application/pdf'))
             else:
                 images = []
@@ -86,7 +64,7 @@ def supplement_unreadable(inventory, content, client):
                     pdf.pages[p['page'] - 1].to_image(resolution=100).original.convert('RGB').save(buffer, format='PNG')
                     images.append(media_url(buffer.getvalue(), 'image/png'))
                 payload['image_order'] = page_ids
-                response = call(client, 'boundary_vision', payload, BoundaryVisuals, images=images)
+                response = client.complete('boundary_vision', payload, BoundaryVisuals, images=images)
             rows = response['pages']
             if len(rows) != len(page_ids) or {r['page'] for r in rows} != set(page_ids):
                 raise ModelError('Visual boundary reading must identify every requested source page exactly once.')

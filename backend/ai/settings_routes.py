@@ -44,6 +44,13 @@ async def save_key(provider: str, request: Request):
     return config()
 
 
+@router.put('/rate-limits')
+async def save_rate_limit(request: Request):
+    local_mutation(request)
+    update_local(ROOT, rate_limit=await safe_body(request))
+    return config()
+
+
 @router.delete('/credentials/{provider}')
 def delete_key(provider: str, request: Request):
     local_mutation(request)

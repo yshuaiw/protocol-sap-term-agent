@@ -15,6 +15,7 @@ from .providers import PROVIDERS, ADAPTER_VERSION, request_spec, response_conten
 from .diagnostics import rejected_output_summary
 
 from .prompts import SYSTEM, TASKS
+from .request_limits import REQUEST_LIMITER
 
 
 
@@ -30,7 +31,7 @@ def retry_delay(response):
     except ValueError:
         seconds = 2
     if not math.isfinite(seconds) or seconds > 60:
-        raise ModelError('Groq rate limit requires a longer wait. This run stopped without upgrading or making further requests.')
+        raise ModelError('Provider rate limit requires a longer wait. This run stopped without upgrading or making further requests.')
     return min(60, max(.25, seconds) + .5)
 
 
@@ -86,12 +87,14 @@ def provider_error(response, stage, model, api_key, schema=None, provider='groq'
 
 
 class ModelClient:
-    def __init__(self, settings=None, transport=None, cache_dir=None):
+    def __init__(self, settings=None, transport=None, cache_dir=None, limiter=None):
         self.settings = copy.deepcopy(settings or Settings.load())
         self.transport = transport
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.records = []
         self._pending_cache = None
+        # Scripted contract fixtures skip wall-clock waits unless explicitly testing admission.
+        self.limiter = limiter if limiter is not None else (None if isinstance(transport, httpx.MockTransport) else REQUEST_LIMITER)
 
     def complete(self, stage, payload, schema, images=None, pdf=None):
         self._pending_cache = None
@@ -139,11 +142,15 @@ class ModelClient:
         format_recovery, transient_retry = False, False
         rate_retries, rate_waited = 0, 0
         request_attempts = 0
+        rate_waited_seconds = 0
+        rpm = settings.request_rpm(provider, model)
         rejected_outputs = []
         with httpx.Client(base_url=PROVIDERS[provider]['base'], timeout=90, trust_env=False,
                           transport=self.transport, follow_redirects=False) as client:
             # Each format permits two rate waits totaling <=60s, one format recovery and one server retry.
             while True:
+                if self.limiter is not None:
+                    rate_waited_seconds += self.limiter.acquire(provider, model, rpm)
                 request_attempts += 1
                 try:
                     response = client.post(path, headers=headers, json=body)
@@ -155,7 +162,10 @@ class ModelClient:
                         raise ModelError('Provider rate-limit wait budget exceeded; no further request sent or account upgrade attempted.')
                     rate_retries += 1
                     rate_waited += delay
-                    time.sleep(delay)
+                    if self.limiter is not None:
+                        self.limiter.defer(provider, model, delay)
+                    else:
+                        time.sleep(delay)
                     continue
                 if response.status_code in (500, 502, 503) and not transient_retry:
                     transient_retry = True
@@ -194,6 +204,7 @@ class ModelClient:
         self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': digest, 'cached': False,
                              'usage': usage, 'simulation': simulation, 'response_format': body.get('response_format', {}).get('type', format_name),
                              'format_recovery': format_recovery, 'request_attempts': request_attempts,
+                             'rpm_limit': rpm, 'rate_wait_seconds': round(rate_waited_seconds, 3),
                              'reasoning_effort': body.get('reasoning_effort', 'model default'),
                              'max_completion_tokens': output_tokens, 'rejected_outputs': rejected_outputs,
                              'elapsed_seconds': round(time.monotonic() - started, 3)})

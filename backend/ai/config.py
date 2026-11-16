@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from .providers import PROVIDERS, ADAPTER_VERSION
 from .settings_store import CONFIG_LOCK, read_local, valid_model
+from .rate_policy import DEFAULT_RPM, validate_profiles
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -74,6 +75,7 @@ class Settings:
     chunk_units: int = 8
     link_batch_size: int = 8
     max_output_tokens: int = 4096
+    rate_limits: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, root=ROOT):
@@ -85,6 +87,9 @@ class Settings:
         if provider not in PROVIDERS or visual not in PROVIDERS:
             raise ValueError('Unsupported provider in local API settings.')
         keys, status = credentials(env, local, root)
+        rates = validate_profiles(local.get('rate_limits', {}))
+        if any(k and k in str(rates) for k in keys.values()):
+            raise ValueError('Invalid local RPM settings; contents withheld.')
         mode = selected.get('pdf_mode', env.get('TERM_AGENT_PDF_MODE', 'vision'))
         if mode not in ('vision', 'text', 'native'):
             raise ValueError('TERM_AGENT_PDF_MODE must be vision, text or native.')
@@ -93,7 +98,7 @@ class Settings:
         if not valid_model(model) or not valid_model(vision_model) or any(k and k in model + vision_model for k in keys.values()):
             raise ValueError('Invalid model ID; configuration contents withheld.')
         return cls(api_key=keys[provider], model=model, provider=provider, vision_provider=visual,
-                   vision_api_key=keys[visual], key_status=status, vision_model=vision_model, pdf_mode=mode,
+                   vision_api_key=keys[visual], key_status=status, vision_model=vision_model, pdf_mode=mode, rate_limits=rates,
                    offline=env.get('TERM_AGENT_OFFLINE', '0') == '1',
                    max_calls=number(env, 'TERM_AGENT_MAX_CALLS', 500, 1, 1000),
                    chunk_chars=number(env, 'TERM_AGENT_CHUNK_CHARS', 7000, 1000, 15000),
@@ -103,6 +108,9 @@ class Settings:
 
     def public(self):
         return {'provider': self.provider, 'vision_provider': self.vision_provider,
+                'rate_limits': self.rate_limits, 'rate_defaults': DEFAULT_RPM,
+                'text_rpm': self.request_rpm(self.provider, self.model),
+                'vision_rpm': self.request_rpm(self.vision_provider, self.vision_model),
                 'key_configured': bool(self.api_key), 'vision_key_configured': bool(self.visual_key()), 'model': self.model,
                 'vision_model': self.vision_model, 'pdf_mode': self.pdf_mode, 'offline': self.offline,
                 'native_pdf': PROVIDERS[self.vision_provider]['native_pdf'],
@@ -118,7 +126,12 @@ class Settings:
     def visual_key(self):
         return self.vision_api_key if self.vision_api_key is not None else (self.api_key if self.provider == self.vision_provider else '')
 
+    def request_rpm(self, provider, model):
+        return self.rate_limits.get(provider, {}).get(model, DEFAULT_RPM[provider])
+
     def provenance(self):
         """Allowlist only non-secret request-affecting settings for portable history."""
         return {key: getattr(self, key) for key in ('provider', 'model', 'vision_provider', 'vision_model', 'pdf_mode',
-                'max_calls', 'chunk_chars', 'chunk_units', 'link_batch_size', 'max_output_tokens')} | {'adapter': ADAPTER_VERSION}
+                'max_calls', 'chunk_chars', 'chunk_units', 'link_batch_size', 'max_output_tokens')} | {
+                    'adapter': ADAPTER_VERSION, 'text_rpm': self.request_rpm(self.provider, self.model),
+                    'vision_rpm': self.request_rpm(self.vision_provider, self.vision_model)}

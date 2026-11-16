@@ -28,10 +28,24 @@ def valid_model(model):
     return isinstance(model, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_./:-]{0,149}', model) and '..' not in model
 
 
-def update_local(root, selection=None, credential=None):
+def update_local(root, selection=None, credential=None, rate_limit=None):
     """Null credential disables legacy fallback without modifying API.txt or the environment."""
     with CONFIG_LOCK:
         value = read_local(root)
+        from .rate_policy import validate_profiles, valid_rpm
+        profiles = validate_profiles(value.get('rate_limits', {}))
+        if rate_limit is not None:
+            if (not isinstance(rate_limit, dict) or set(rate_limit) != {'provider', 'model', 'rpm'} or
+                    not isinstance(rate_limit['provider'], str) or rate_limit['provider'] not in PROVIDERS or
+                    not valid_model(rate_limit['model']) or
+                    (rate_limit['rpm'] is not None and not valid_rpm(rate_limit['rpm']))):
+                raise ValueError('Choose a valid provider/model and an integer RPM from 1 to 1000; contents withheld.')
+            models = profiles.setdefault(rate_limit['provider'], {})
+            if rate_limit['rpm'] is None:
+                models.pop(rate_limit['model'], None)
+            else:
+                models[rate_limit['model']] = rate_limit['rpm']
+            value['rate_limits'] = validate_profiles(profiles)
         if selection is not None:
             expected = {'provider', 'model', 'vision_provider', 'vision_model', 'pdf_mode'}
             if set(selection) != expected or any(not isinstance(selection[p], str) or selection[p] not in PROVIDERS
@@ -59,7 +73,7 @@ def update_local(root, selection=None, credential=None):
         from .config import credentials, local_options
         effective, _ = credentials(local_options(root), value, root)
         secrets = [k for k in effective.values() if k]
-        if any(k in str(value['selection']) for k in secrets):
+        if any(k in str(value['selection']) + str(profiles) for k in secrets):
             raise ValueError('Credentials cannot be used as model IDs.')
         path = Path(root) / SETTINGS_FILE
         temp = path.with_suffix('.json.tmp')
