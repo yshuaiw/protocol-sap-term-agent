@@ -8,7 +8,9 @@ export async function api(path, method = 'GET', data) {
   const response = await fetch('/api' + path, options);
   if (!response.ok) {
     const error = await response.json().catch(() => ({detail: response.statusText}));
-    throw new Error(typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail));
+    const failure = new Error(typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail));
+    failure.status = response.status;
+    throw failure;
   }
   return response.json();
 }
