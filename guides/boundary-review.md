@@ -15,7 +15,7 @@ An embedded numbered statistics chapter is shown for review and cannot be applie
 - The program resolves source IDs to exact original text and Unicode coordinates. Unknown references, missing/duplicate candidate decisions, invalid page ranges and overlapping independent proposals remain visible review problems. Uncertain starts prevent the pair shortcut. One invalid proposal does not hide other reviewable proposals.
 - Batches count serialized metadata and text, with at most 24 index pages or six review targets and a 4,000–14,000 character budget derived from the text chunk setting. Oversized contexts stop explicitly; no page is silently dropped. This index is structure evidence, not a full-text reading or a guarantee of every boundary being found.
 - Unreadable pages use the selected image/native-PDF route in groups of up to three. Visual transcription and page attribution remain unverified until checked. Native PDF sends the whole original, including pages outside the target group, with the existing 15 MiB limit. Text-only/missing-key cases report gaps.
-- Google boundary requests are spaced by at least 13 seconds per model within one backend process. This is boundary-only pacing, not discovery throttling or a guarantee against account/project token quotas. Long/scanned files may take several minutes. Quota failures still require manual action.
+- Boundary requests use the same configurable provider/model RPM caps as all other stages; see [request pacing](request-rate-limits.md). This replaces the former fixed Google boundary delay. Long/scanned files may take several minutes. Other quotas and network failures can still require manual action.
 
 ## Verification scope
 

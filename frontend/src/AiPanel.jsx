@@ -16,6 +16,7 @@ export function AiPanel({project, run, busy}) {
     {config && <>
       <p>Text: {config.provider} · {config.model} · {config.key_configured ? 'Key configured locally' : 'No key configured'}{config.offline ? ' · Model requests disabled' : ''}</p>
       <p>Visual: {config.vision_provider} · {config.vision_model} · {config.vision_key_configured ? 'Key configured locally' : 'No key configured'}</p>
+      {config.rate_defaults ? <p className="muted">App RPM caps: text {config.text_rpm}, visual {config.vision_rpm}. The same provider/model shares one cap. Requests may pause to respect it; edit limits in API settings.</p> : <p className="muted">Restart the backend to load configurable RPM limits.</p>}
       {!config.key_configured && <p className="muted">Open API settings to save a local credential, then refresh settings.</p>}
       <label>PDF and embedded-image processing<select aria-label="Visual processing mode" value={mode} onChange={e => setMode(e.target.value)}><option value="vision" disabled={!config.image_input}>Text + per-page vision ({config.vision_model || 'not configured'})</option><option value="native" disabled={!config.native_pdf}>Text + original PDF (supported visual providers)</option><option value="text">Extracted text only — image coverage may remain incomplete</option></select></label>
       <p className="muted">Content is sent to the selected providers. Settings are fixed when the operation starts. Failures require a manual switch and a new operation; no automatic fallback or cross-provider resume.</p>

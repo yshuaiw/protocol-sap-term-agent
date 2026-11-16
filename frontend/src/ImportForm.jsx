@@ -65,7 +65,7 @@ export function ImportForm({run, busy}) {
       {info.length > 0 && <>
         <h2>Review document boundaries</h2>
         <p className="muted">PDF ranges use physical file pages, not printed page numbers. DOCX uses one whole-document unit. A statistics chapter is not automatically a standalone SAP.</p>
-        <p className="muted">AI scans a bounded index of every page, expands candidate context, and uses the selected visual route for unreadable pages when configured. Google boundary requests are paced; a long or scanned file may take several minutes. All ranges remain proposals until you review and apply them.</p>
+        <p className="muted">AI scans a bounded index of every page, expands candidate context, and uses the selected visual route for unreadable pages when configured. Requests follow the model RPM caps in API settings; a long or scanned file may take several minutes. All ranges remain proposals until you review and apply them.</p>
         <button type="button" onClick={suggest} disabled={busy}>Ask AI for boundary suggestions</button>
         {suggestionNotice && <p role="status" className="callout">{suggestionNotice}</p>}
         <BoundaryReview files={files} info={info} onUse={useSuggestions} busy={busy}/>

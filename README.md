@@ -33,6 +33,8 @@ Open **http://127.0.0.1:8765**. Stop the previous server with Ctrl+C before chan
 
 ## Provider adapters and verification
 
+Set independent provider/model RPM caps in **API settings → Request rate limits**; see [request pacing](guides/request-rate-limits.md). All model stages and retries share these caps. Other quotas and network timeouts remain separate.
+
 | Provider / channel | Credential environment fallback | Implemented input | Live verification |
 |---|---|---|---|
 | Groq | `GROQ_API_KEY` / `API.txt` | Text, images | Text sample workflow only |

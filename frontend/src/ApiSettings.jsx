@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {api} from './api';
+import {RateLimitSettings} from './RateLimitSettings';
 
 const selected = c => Object.fromEntries(['provider', 'model', 'vision_provider', 'vision_model', 'pdf_mode'].map(k => [k, c[k]]));
 
@@ -47,6 +48,8 @@ export function ApiSettings({onClose}) {
         <p>Failures stop the operation. Switch providers here and start a new operation manually. Cross-provider resume is not supported.</p>
         <button className="primary" disabled={busy}>Save task settings</button>
       </form>
+      {config.rate_defaults ? <RateLimitSettings config={config} busy={busy} onSave={value=>change(()=>api('/ai/rate-limits','PUT',value),'Model RPM limit saved. It applies to the next operation; recent usage is retained.')}/> :
+        <section className="settings-section"><h2>Request rate limits</h2><p role="status">Restart the backend and refresh this page to load configurable RPM limits.</p></section>}
       <section className="settings-section"><h2>Local credentials</h2>
         <p>Keys are stored in a plain-text local configuration file. They are excluded from Git, project bundles and history. Saved keys are never shown here.</p>
         <form onSubmit={e=>{e.preventDefault();change(()=>api(`/ai/credentials/${credentialProvider}`, 'PUT', {key}), 'Key saved locally. Credentials and model access have not been tested.');}}>
