@@ -1,14 +1,12 @@
-"""Reconstructed editable text plus unchanged page facsimiles; never claim PDF layout fidelity."""
-import io
+"""New editable Word copies; originals stay separate and hash-verified unchanged."""
 import hashlib
 import json
 from pathlib import Path
 
-import pdfplumber
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Pt, RGBColor
 from .docx_export import export_docx
 from .docx_input import paragraph_text
 
@@ -18,15 +16,20 @@ def export_pair(project, folder: Path, log: list, export_id: str):
     out.mkdir(parents=True, exist_ok=True)
     files, checks = [], []
     for source in project['documents']:
+        source_path = folder / 'inputs' / source['source']
+        original = source_path.read_bytes()
+        if hashlib.sha256(original).hexdigest() != source['sha256']:
+            raise ValueError('Original source file changed; exports were not published.')
         if source.get('format') == 'docx':
             path = out / f"{source['role']}_revised.docx"
-            checks.append(export_docx(source, (folder / 'inputs' / source['source']).read_bytes(), path))
+            check = export_docx(source, original, path)
+            checks.append(check)
             files.append(path.name)
             continue
         doc = Document()
         section = doc.sections[0]
         section.header.paragraphs[0].text = f"{source['role']} | reconstructed working copy"
-        section.footer.paragraphs[0].text = 'Source images in appendix are unchanged originals. See verification.json.'
+        section.footer.paragraphs[0].text = 'Original documents are retained separately and unchanged. See verification.json.'
         doc.styles['Normal'].font.size = Pt(10)
         doc.styles['Normal'].paragraph_format.space_after = Pt(2)
         doc.styles['Normal'].paragraph_format.line_spacing = 1.05
@@ -38,11 +41,10 @@ def export_pair(project, folder: Path, log: list, export_id: str):
                 border.getparent().remove(border)
         doc.add_heading(f"{source['role']} revised working copy", 0)
         doc.add_paragraph('Editable transcription of the selected PDF pages. Layout and region classification are reconstructed. '
-                          'The appendix retains unchanged source page images, including image-only content; approved edits appear only in the transcription. '
+                          'Original files remain separate and unchanged; approved edits appear only in this working copy. '
                           'Review the coverage report before using this draft.')
         doc.add_paragraph(f"Source: {source['name']} | PDF pages {source['start']}-{source['end']} | SHA256 {source['sha256']}")
         expected = []
-        expected_images = []
         anchor_number = 0
         def anchor(paragraph, block):
             nonlocal anchor_number
@@ -57,7 +59,6 @@ def export_pair(project, folder: Path, log: list, export_id: str):
             paragraph._p.append(end)
             expected.append((marker, block['text']))
         for page in source['pages']:
-            doc.add_heading(f"Source page {page['page']}", 1)
             table_map = {}
             for block in (b for b in source['blocks'] if b['page'] == page['page']):
                 if block['region'] == 'table':
@@ -76,20 +77,6 @@ def export_pair(project, folder: Path, log: list, export_id: str):
                     anchor(paragraph, block)
             for issue in page['issues']:
                 doc.add_paragraph('Coverage issue: ' + issue)
-        doc.add_page_break()
-        doc.add_heading('Unchanged original PDF page images', 1)
-        with pdfplumber.open(folder / 'inputs' / source['source']) as pdf:
-            for page_index, page in enumerate(source['pages']):
-                if page_index:
-                    doc.add_page_break()
-                doc.add_paragraph(f"Original PDF page {page['page']} - not revised")
-                picture = pdf.pages[page['page'] - 1].to_image(resolution=100).original
-                buffer = io.BytesIO()
-                picture.convert('RGB').save(buffer, format='PNG')
-                expected_images.append(hashlib.sha256(buffer.getvalue()).hexdigest())
-                buffer.seek(0)
-                width = min(6, 7.4 * picture.width / picture.height)
-                doc.add_picture(buffer, width=Inches(width))
         path = out / f"{source['role']}_revised.docx"
         doc.save(path)
         reopened = Document(path)
@@ -103,24 +90,27 @@ def export_pair(project, folder: Path, log: list, export_id: str):
         for marker, text in expected:
             if found.get(marker) != [text]:
                 errors.append(marker)
-        actual_images = []
-        for shape in reopened.inline_shapes:
-            rid = shape._inline.graphic.graphicData.pic.blipFill.blip.embed
-            actual_images.append(hashlib.sha256(reopened.part.related_parts[rid].blob).hexdigest())
-        images_match = actual_images == expected_images
         checks.append({'role': source['role'], 'blocks_expected': len(expected), 'blocks_reread': len(expected) - len(errors),
                        'exact_text_match': not errors, 'failed_anchors': errors,
-                       'source_pages_retained': len(actual_images), 'source_page_image_hashes_match': images_match,
+                       'source_pages_retained': len(reopened.inline_shapes),
+                       'source_page_image_hashes_match': None,  # Legacy field: no page-image comparison is performed.
+                       'page_image_appendix_included': bool(reopened.inline_shapes),
                        'coverage_warnings': source['warnings']})
         files.append(path.name)
+    for source, check in zip(project['documents'], checks):
+        original = (folder / 'inputs' / source['source']).read_bytes()
+        check['original_source_hashes_match'] = hashlib.sha256(original).hexdigest() == source['sha256']
     report = {'export_id': export_id, 'approved_changes': log, 'documents': checks,
-              'verified': all(c['exact_text_match'] and c['source_page_image_hashes_match'] for c in checks),
+              'verified': all(c['exact_text_match'] and c['original_source_hashes_match']
+                              and not c.get('page_image_appendix_included', False) for c in checks),
               'limits': ['Verification covers exact parsed text, approved patch reconciliation and original source hashes, not semantic correctness.',
-                         'PDF facsimiles retain original visuals and are not edited. Model visual transcriptions require human source review.',
+                         'Original files are retained separately; PDF page headings and page-image appendices are not added. Model visual transcriptions require human source review.',
                          'Native DOCX packages preserve unrelated parts; PDF reconstruction, complex structures and final layout still require visual verification.']}
     (out / 'verification.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
     (out / 'change-log.json').write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding='utf-8')
     (out / 'mention-index.json').write_text(json.dumps(project['mentions'], indent=2, ensure_ascii=False), encoding='utf-8')
     if not report['verified']:
+        if any(not c['original_source_hashes_match'] for c in checks):
+            raise ValueError('Original source file changed; exports were not published.')
         raise ValueError('DOCX reread verification failed; exports were not published.')
     return {'id': export_id, 'files': files + ['verification.json', 'change-log.json', 'mention-index.json'], 'verification': report}

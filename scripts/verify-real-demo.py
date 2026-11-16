@@ -39,7 +39,7 @@ p = request('POST', path + f'/plans/{plan["id"]}/apply', json={'revision': p['re
 result = p['exports'][-1]
 assert result['verification']['verified'] and result['verification']['approved_delta_match']
 assert len(result['verification']['approved_changes']) == 4
-assert all(d['source_page_image_hashes_match'] for d in result['verification']['documents'])
+assert all(d['original_source_hashes_match'] for d in result['verification']['documents'])
 assert sum(m['text'] in ('MAS', 'Main analysis set') for m in p['mentions']) == 4
 assert next(m for m in p['mentions'] if m['id'] == preserved['id'])['status'] == 'preserve'
 out = root / 'output' / 'real-demo-verification'

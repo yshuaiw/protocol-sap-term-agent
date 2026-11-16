@@ -115,7 +115,8 @@ def test_approved_subset_exports_exact_differences_and_roundtrips(client):
     assert sum(m['text'] == 'Investigational Arm A' for m in revised['mentions']) == 2
     report = revised['exports'][-1]['verification']
     assert report['verified'] and report['approved_delta_match']
-    assert all(d['source_pages_retained'] == 1 and d['source_page_image_hashes_match'] for d in report['documents'])
+    assert all(d['source_pages_retained'] == 0 and not d['page_image_appendix_included']
+               and d['original_source_hashes_match'] for d in report['documents'])
     assert len(report['approved_changes']) == 2
     before = {b['id']: b['text'] for d in p['documents'] for b in d['blocks']}
     after = {b['id']: b['text'] for d in revised['documents'] for b in d['blocks']}
