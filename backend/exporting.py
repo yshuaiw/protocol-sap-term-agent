@@ -10,6 +10,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from .docx_export import export_docx
+from .docx_input import paragraph_text
 
 
 def export_pair(project, folder: Path, log: list, export_id: str):
@@ -96,7 +97,7 @@ def export_pair(project, folder: Path, log: list, export_id: str):
         found = {}
         for bookmark in reopened.element.xpath('.//w:bookmarkStart'):
             name = bookmark.get(qn('w:name'))
-            text = ''.join(bookmark.getparent().xpath('.//w:t/text()'))
+            text = paragraph_text(bookmark.getparent())
             found.setdefault(name, []).append(text)
         errors = []
         for marker, text in expected:
