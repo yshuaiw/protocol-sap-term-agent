@@ -24,7 +24,7 @@ def pdf_fixture(role):
     return buffer.getvalue()
 
 
-def execute():
+def execute(use_groq=False):
     from fastapi.testclient import TestClient
     from backend import main
     from backend.ai import routes
@@ -32,6 +32,12 @@ def execute():
     from backend.ai.config import Settings
     from backend.store import Store
     settings = Settings.load()
+    if use_groq:
+        from backend.ai.config import credentials, local_options
+        from backend.ai.settings_store import read_local
+        keys, _ = credentials(local_options(), read_local(ROOT), ROOT)
+        settings = Settings(api_key=keys['groq'], provider='groq', model='openai/gpt-oss-20b',
+                            pdf_mode='text', rate_limits=settings.rate_limits)
     if settings.offline or settings.provider != 'groq' or not settings.api_key:
         raise ValueError('Live smoke requires offline=false, Groq text selection and a local Groq key. No alternative provider is called.')
     settings.pdf_mode = 'text'
@@ -68,6 +74,7 @@ def execute():
         path = '/projects/' + project['id']
         project = request('POST', path + '/ai/generate', json={'revision': project['revision'], 'pdf_mode': 'text'})
         summary.update(registry_passed=True, concepts=len(project['concepts']), occurrences=len(project['mentions']))
+        summary['explanations'] = project['ai_runs'][-1].get('explanations')
         targets = [m for m in project['mentions'] if m['text'] == 'Arm A']
         if {m['role'] for m in targets} != set(roles) or len({m['concept_id'] for m in targets}) != 1:
             raise ValueError('Real model did not unambiguously group Arm A across both documents. No scripted correction was applied.')
@@ -123,8 +130,9 @@ def execute():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--live', action='store_true')
+    parser.add_argument('--use-groq', action='store_true', help='Use enabled Groq key for synthetic data without changing saved provider selection.')
     args = parser.parse_args()
     if not args.live:
         print('DRY RUN: no model calls. --live uses configured Groq text model only, new synthetic PDFs and an isolated store. No account/billing changes.')
     else:
-        raise SystemExit(execute())
+        raise SystemExit(execute(use_groq=args.use_groq))

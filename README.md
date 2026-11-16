@@ -69,7 +69,7 @@ Use **Delete** beside one project in **Saved projects**. Review the confirmation
 
 External originals, previously downloaded ZIP/Word copies, independently imported projects and API settings/credentials remain intact. An exported ZIP can still be imported as a new project later. This is normal filesystem deletion, not a secure disk erase or deletion of backups held elsewhere.
 
-The backend refuses deletion while the same project has an active operation in any tab, including AI work, export or a source/export download. An outdated confirmation must be refreshed and confirmed again. On success the project is removed from the list; an old tab clears its project view on its next reload/action. Save/cache code cannot recreate missing project ancestors. The existing **one backend process per data store** constraint applies; multiple servers/workers against the same project directory are unsupported.
+Active LLM work can be cancelled and then deleted after confirmation; other active exports/downloads still block deletion. Changed projects require refreshed confirmation. See [LLM cancellation](guides/llm-cancellation.md). One backend process per data store is required; late writes cannot recreate deleted projects.
 
 Deletion does not require intact input files. If Windows file locks or permissions interrupt removal, the app reports failure and warns that some files may already be gone; it retains the manifest where possible for a visible retry. Close files using the project, refresh its deletion details and retry. Linked project directories/descendants are refused before removal, so the action cannot traverse those links into external files. A corrupt project JSON or independent filesystem changes can require manual repair; no transactional rollback is promised for an interrupted filesystem deletion.
 
@@ -117,3 +117,5 @@ After offline verification, `.venv/Scripts/python.exe scripts/live-provider-smok
 Projects persist in `data/projects/`, independent of browser sessions and code Git history. `TERM_AGENT_DATA` can choose another folder. Run one backend process; multiple workers sharing storage are unsupported. Teammates should create their own environments and import a project ZIP, not copy `.venv`.
 
 macOS scripts (`bash scripts/setup.sh`, `bash scripts/start.sh --offline`) are supplied but untested on macOS. The teammate's actual computer is also untested. Local `docs/` and Presentation text files are intentionally excluded from source checkouts and are not needed to run the app.
+
+Sourced definitions and review: [Term explanations](guides/term-explanations.md).
