@@ -26,6 +26,8 @@ Hook tests initialize one pristine repository per module and copy its complete f
 
 Run affected flows. Shared navigation/API/persistence changes need smoke plus all affected flows; a demo release or broad/uncertain changes need all six once. Capture screenshots and check console/page errors; deliberately injected error cases must remain explicitly identified.
 
+For upload-control language or sidebar layout changes, also run `browser-file-picker.cjs` against the same fixture. It checks English captions in a Chinese browser locale, keyboard/click picker activation, PDF/DOCX selection, busy state and desktop/mobile layout. Its cancel-event check is simulated; it does not automate or translate the operating system dialog.
+
 From the project root, create fixtures with `.venv/Scripts/python.exe scripts/make-fixtures.py`, then start `.venv/Scripts/python.exe scripts/serve-workflow-fixture.py` in a separate terminal. Set `DEMO_URL=http://127.0.0.1:8766` and run `node scripts/<script>`. This fixture supports all six flows with temporary projects/settings, dummy credentials, scripted provider content and blocked external connections. Run cancellation/explanations last because it configures delays; stop the fixture when finished. Never target real projects or the production demo. The older offline fixture lacks these delay controls.
 
 Playwright is separate tooling, resolved through `PLAYWRIGHT_MODULE` or `NODE_PATH`; scripts use installed Edge by default. Screenshots stay under ignored `output/`. `BROWSER_OUTPUT_DIR` applies only to scripts explicitly supporting it.

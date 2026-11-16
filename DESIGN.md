@@ -8,3 +8,5 @@
 - On narrow screens stack the register and evidence; preserve horizontal scrolling inside data tables.
 
 - Keep empty-state text inside bordered lists inset and aligned with the search label (17px horizontal padding here); text against the border feels cramped, as corrected by the user.
+- Show English file-picker buttons and selection status inside the page; native file input captions follow browser language and can interrupt the English demo. Keep the operating system dialog native.
+- Keep the desktop sidebar wide enough to read saved project names (288px); align the main content offset with it and retain the compact/mobile breakpoints.

@@ -1,9 +1,10 @@
-import React, {useState} from 'react';
+import React, {useRef, useState} from 'react';
 import {api} from './api';
 import {BoundaryReview} from './BoundaryReview';
 import {boundaryNotice, rangesValid} from './boundaryState';
 
 export function ImportForm({run, busy}) {
+  const fileInput = useRef(null);
   const [files, setFiles] = useState([]), [info, setInfo] = useState([]);
   const [name, setName] = useState(''), [selections, setSelections] = useState([]);
   const [note, setNote] = useState(''), [checked, setChecked] = useState(false);
@@ -61,7 +62,15 @@ export function ImportForm({run, busy}) {
     <h1>Import documents</h1><p className="lead">Use independent Protocol and SAP files in PDF or DOCX format, including a mixed pair. A combined PDF can be split by page range.</p>
     <form onSubmit={submit} className="import-form">
       <label>Project name<input value={name} onChange={e => setName(e.target.value)} required maxLength={200}/></label>
-      <label className="upload-area">Select PDF or DOCX files<input aria-label="Select PDF or DOCX files" type="file" multiple accept=".pdf,.docx" onChange={choose} disabled={busy}/><span>File inspection is local. Model generation is a separate action.</span></label>
+      <div className="upload-area">
+        <strong>Select PDF or DOCX files</strong>
+        <input ref={fileInput} aria-label="Select PDF or DOCX files" type="file" multiple accept=".pdf,.docx" onChange={choose} disabled={busy} hidden/>
+        <div className="file-selection">
+          <button type="button" onClick={() => fileInput.current.click()} disabled={busy}>Choose files</button>
+          <span role="status">{files.length ? files.map(file => file.name).join('; ') : 'No files selected'}</span>
+        </div>
+        <span>File inspection is local. Model generation is a separate action.</span>
+      </div>
       {info.length > 0 && <>
         <h2>Review document boundaries</h2>
         <p className="muted">PDF ranges use physical file pages, not printed page numbers. DOCX uses one whole-document unit. A statistics chapter is not automatically a standalone SAP.</p>
