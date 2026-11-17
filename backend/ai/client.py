@@ -1,6 +1,5 @@
 """Bounded provider requests. Never expose vendor error bodies, keys or raw HTTP exceptions."""
 import copy
-import hashlib
 import json
 import math
 import re
@@ -16,6 +15,8 @@ from .diagnostics import rejected_output_summary
 
 from .prompts import SYSTEM, TASKS
 from .request_limits import REQUEST_LIMITER
+from .cache_identity import CacheIdentity
+from .response_errors import OutputError
 from ..operations import CURRENT, check, wait
 
 
@@ -93,6 +94,8 @@ class ModelClient:
         self.transport = transport
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.records = []
+        self.http_attempts = 0
+        self._cache_identity = CacheIdentity(self.cache_dir)
         self._pending_cache = None
         # Scripted contract fixtures skip wall-clock waits unless explicitly testing admission.
         self.limiter = limiter if limiter is not None else (None if isinstance(transport, httpx.MockTransport) else REQUEST_LIMITER)
@@ -113,8 +116,8 @@ class ModelClient:
         key = settings.visual_key() if visual else settings.api_key
         if not key:
             raise ModelError(f'{PROVIDERS[provider]["name"]} key is missing. Save a local key in API settings.')
-        if stage not in TASKS or len(self.records) >= settings.max_calls:
-            raise ModelError('Unknown stage or per-run model call limit reached. No partial run was marked complete.')
+        if stage not in TASKS:
+            raise ModelError('Unknown model stage. No request was made.')
         model = settings.vision_model if visual else settings.model
         if not model:
             raise ModelError('A visual model is required for this content; configure API settings.')
@@ -127,17 +130,18 @@ class ModelClient:
             raise ModelError('Model payload is too large. Reduce batch size; content was not silently truncated.')
         simulation = isinstance(self.transport, httpx.MockTransport)
         prompt_version = {'discovery': 'discovery-v5-explicit-terms', 'linking': 'linking-v2-compact-refs'}.get(stage, 'prompt-v1')
-        identity = json.dumps([stage, provider, model, settings.provenance(), schema.model_json_schema(), payload, images or [], pdf, prompt_version, simulation, ADAPTER_VERSION], sort_keys=True)
-        digest = hashlib.sha256(identity.encode()).hexdigest()
+        digest, candidates = self._cache_identity.paths([stage, provider, model, settings.provenance(), schema.model_json_schema(), payload, images or [], pdf, prompt_version, simulation, ADAPTER_VERSION])
         cache = self.cache_dir / (digest + '.json') if self.cache_dir else None
-        staged = operation.cache.get(cache) if operation and cache else None
-        if staged or cache and cache.is_file():
+        for candidate in candidates:
+            staged = operation.cache.get(candidate) if operation else None
+            if not staged and not candidate.is_file():
+                continue
             try:
-                result = schema.model_validate_json(staged or cache.read_text(encoding='utf-8'))
+                result = schema.model_validate_json(staged or candidate.read_text(encoding='utf-8'))
             except (ValidationError, ValueError):
                 raise ModelError('Invalid local model cache; remove the affected ai-cache file and retry.') from None
             self.check_credentials(result)
-            self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': digest, 'cached': True, 'usage': {}, 'simulation': simulation})
+            self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': candidate.stem, 'cached': True, 'usage': {}, 'simulation': simulation})
             return result.model_dump()
         prompt = SYSTEM + '\nTASK: ' + TASKS[stage] + '\nJSON schema: ' + json.dumps(schema.model_json_schema())
         output_tokens = min(settings.max_output_tokens, {'boundary_scan': 2048, 'boundary_vision': 3072}.get(stage, settings.max_output_tokens))
@@ -155,10 +159,13 @@ class ModelClient:
                           transport=self.transport, follow_redirects=False) as client:
             # Each format permits two rate waits totaling <=60s, one format recovery and one server retry.
             while True:
+                if self.http_attempts >= settings.max_calls:
+                    raise ModelError(f'Per-run HTTP attempt budget reached ({settings.max_calls}); cache hits are free. Increase Run budgets for the next operation. No partial run was marked complete.')
                 if self.limiter is not None:
                     rate_waited_seconds += self.limiter.acquire(provider, model, rpm)
                 check()
                 request_attempts += 1
+                self.http_attempts += 1
                 try:
                     response = client.post(path, headers=headers, json=body)
                 except httpx.HTTPError:
@@ -206,10 +213,19 @@ class ModelClient:
                 raise ModelError('Model output contained credential material and was rejected; contents withheld.')
             result = schema.model_validate_json(content)
             self.check_credentials(result)
+        except OutputError as exc:
+            raise ModelError(f'{PROVIDERS[provider]["name"]} response {exc}; stage={stage}; output budget={output_tokens} tokens. No partial response or rule fallback was accepted.') from None
+        except ValidationError:
+            try:
+                json.loads(content)
+                reason = 'failed schema validation'
+            except (ValueError, TypeError):
+                reason = 'contained invalid JSON'
+            raise ModelError(f'{PROVIDERS[provider]["name"]} response {reason}; stage={stage}; output budget={output_tokens} tokens. Provider content withheld; no partial response or rule fallback was accepted.') from None
         except ModelError:
             raise
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
-            raise ModelError('Model response was truncated, refused or failed JSON/schema validation; no partial response or rule fallback was accepted.') from None
+            raise ModelError(f'Malformed provider response; stage={stage}. Provider content withheld; no partial response or rule fallback was accepted.') from None
         self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': digest, 'cached': False,
                              'usage': usage, 'simulation': simulation, 'response_format': body.get('response_format', {}).get('type', format_name),
                              'format_recovery': format_recovery, 'request_attempts': request_attempts,

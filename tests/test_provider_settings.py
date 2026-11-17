@@ -68,8 +68,8 @@ def test_cache_separates_provider_model_settings_and_simulation(tmp_path):
         client.complete('discovery', {}, Extraction)
         client.accept()
         assert client.records[0]['provider'] == provider
-    assert len(requests) == 4
-    assert len(list(tmp_path.glob('*.json'))) == 4
+    assert len(requests) == 3  # Output budget changes reuse a complete, validated result.
+    assert len(list(tmp_path.glob('*.json'))) == 3
 
 
 def test_model_selection_rejects_unsupported_media(tmp_path):

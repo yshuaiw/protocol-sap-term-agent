@@ -28,12 +28,15 @@ def valid_model(model):
     return isinstance(model, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_./:-]{0,149}', model) and '..' not in model
 
 
-def update_local(root, selection=None, credential=None, rate_limit=None):
+def update_local(root, selection=None, credential=None, rate_limit=None, run_limits=None):
     """Null credential disables legacy fallback without modifying API.txt or the environment."""
     with CONFIG_LOCK:
         value = read_local(root)
         from .rate_policy import validate_profiles, valid_rpm
         profiles = validate_profiles(value.get('rate_limits', {}))
+        if run_limits is not None:
+            from .run_policy import validate_limits
+            value['run_limits'] = validate_limits(run_limits)
         if rate_limit is not None:
             if (not isinstance(rate_limit, dict) or set(rate_limit) != {'provider', 'model', 'rpm'} or
                     not isinstance(rate_limit['provider'], str) or rate_limit['provider'] not in PROVIDERS or

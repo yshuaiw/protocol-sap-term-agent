@@ -42,7 +42,7 @@ def failed_run(pid, run, client):
     from .. import main
     with LOCK:
         current = main.load(pid)
-        run.update(status='failed', finished=now(), calls=list(client.records))
+        run.update(status='failed', finished=now(), calls=list(client.records), http_attempts=client.http_attempts)
         current.setdefault('ai_runs', []).append(run)
         main.store.save(current, 'AI operation failed; existing document text and register retained')
 
@@ -71,7 +71,7 @@ def generate(pid: str, request: RunRequest):
         run['explanations'] = supplement(working, client)
         if run['explanations']['status'] == 'partial' or any(run['explanations']['counts'][s] for s in ('not_found', 'conflict')):
             run['status'] = 'completed_with_gaps'
-        run.update(finished=now(), calls=list(client.records))
+        run.update(finished=now(), calls=list(client.records), http_attempts=client.http_attempts)
         working.setdefault('ai_runs', []).append(run)
         working['plans'] = []
         with LOCK:

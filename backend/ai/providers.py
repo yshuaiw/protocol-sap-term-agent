@@ -1,4 +1,5 @@
 """Fixed first-party endpoints and provider wire formats. No network at import time."""
+from .response_errors import OutputError
 import copy
 
 PROVIDERS = {
@@ -79,24 +80,32 @@ def request_spec(provider, model, key, stage, prompt, text, schema, tokens, imag
 def response_content(provider, data):
     """Normalize only complete, non-refused responses. Caller validates original schema."""
     if provider == 'google':
+        if data.get('promptFeedback', {}).get('blockReason'):
+            raise OutputError('was refused by the provider')
         candidate = data['candidates'][0]
+        if candidate.get('finishReason') == 'MAX_TOKENS':
+            raise OutputError('was truncated at the output token limit')
         if candidate['finishReason'] != 'STOP' or data.get('promptFeedback', {}).get('blockReason'):
-            raise ValueError('Incomplete model output')
+            raise OutputError('was refused or stopped before completion')
         content = ''.join(p['text'] for p in candidate['content']['parts'] if not p.get('thought') and 'text' in p)
         usage = data.get('usageMetadata', {})
         usage = {out: usage[src] for src, out in [('promptTokenCount', 'prompt_tokens'),
                  ('candidatesTokenCount', 'completion_tokens'), ('totalTokenCount', 'total_tokens')] if src in usage}
     elif provider == 'anthropic':
+        if data.get('stop_reason') == 'max_tokens':
+            raise OutputError('was truncated at the output token limit')
         if data['stop_reason'] != 'end_turn' or any(p.get('type') == 'refusal' for p in data['content']):
-            raise ValueError('Incomplete model output')
+            raise OutputError('was refused or stopped before completion')
         content = ''.join(p['text'] for p in data['content'] if p.get('type') == 'text')
         raw = data.get('usage', {})
         usage = {'prompt_tokens': raw.get('input_tokens', 0), 'completion_tokens': raw.get('output_tokens', 0)}
         usage['total_tokens'] = sum(v for v in usage.values() if isinstance(v, int))
     else:
         choice = data['choices'][0]
+        if choice.get('finish_reason') == 'length':
+            raise OutputError('was truncated at the output token limit')
         if choice.get('finish_reason') != 'stop' or choice['message'].get('refusal'):
-            raise ValueError('Incomplete model output')
+            raise OutputError('was refused or stopped before completion')
         content, usage = choice['message']['content'], data.get('usage', {})
     return content, {k: v for k, v in usage.items() if k in ('prompt_tokens', 'completion_tokens', 'total_tokens')
                      and isinstance(v, int) and not isinstance(v, bool) and v >= 0}

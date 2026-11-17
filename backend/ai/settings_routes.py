@@ -56,3 +56,10 @@ def delete_key(provider: str, request: Request):
     local_mutation(request)
     update_local(ROOT, credential=(provider, None))
     return config()
+
+
+@router.put('/run-limits')
+async def save_run_limits(request: Request):
+    local_mutation(request)
+    update_local(ROOT, run_limits=await safe_body(request))
+    return config()

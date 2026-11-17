@@ -5,6 +5,7 @@ from pathlib import Path
 from .providers import PROVIDERS, ADAPTER_VERSION
 from .settings_store import CONFIG_LOCK, read_local, valid_model
 from .rate_policy import DEFAULT_RPM, validate_profiles
+from .run_policy import DEFAULT_RUN_LIMITS, RUN_LIMIT_RANGES, validate_limits
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -70,11 +71,11 @@ class Settings:
     key_status: dict = field(default_factory=dict, repr=False)
     pdf_mode: str = 'vision'
     offline: bool = False
-    max_calls: int = 500
+    max_calls: int = DEFAULT_RUN_LIMITS['max_calls']
     chunk_chars: int = 7000
     chunk_units: int = 8
     link_batch_size: int = 8
-    max_output_tokens: int = 4096
+    max_output_tokens: int = DEFAULT_RUN_LIMITS['max_output_tokens']
     rate_limits: dict = field(default_factory=dict)
 
     @classmethod
@@ -88,6 +89,9 @@ class Settings:
             raise ValueError('Unsupported provider in local API settings.')
         keys, status = credentials(env, local, root)
         rates = validate_profiles(local.get('rate_limits', {}))
+        limits = validate_limits(local['run_limits']) if 'run_limits' in local else validate_limits({
+            key: number(env, 'TERM_AGENT_' + key.upper(), default, *RUN_LIMIT_RANGES[key])
+            for key, default in DEFAULT_RUN_LIMITS.items()})
         if any(k and k in str(rates) for k in keys.values()):
             raise ValueError('Invalid local RPM settings; contents withheld.')
         mode = selected.get('pdf_mode', env.get('TERM_AGENT_PDF_MODE', 'vision'))
@@ -100,11 +104,11 @@ class Settings:
         return cls(api_key=keys[provider], model=model, provider=provider, vision_provider=visual,
                    vision_api_key=keys[visual], key_status=status, vision_model=vision_model, pdf_mode=mode, rate_limits=rates,
                    offline=env.get('TERM_AGENT_OFFLINE', '0') == '1',
-                   max_calls=number(env, 'TERM_AGENT_MAX_CALLS', 500, 1, 1000),
+                   max_calls=limits['max_calls'],
                    chunk_chars=number(env, 'TERM_AGENT_CHUNK_CHARS', 7000, 1000, 15000),
                    chunk_units=number(env, 'TERM_AGENT_CHUNK_UNITS', 8, 1, 32),
                    link_batch_size=number(env, 'TERM_AGENT_LINK_BATCH_SIZE', 8, 1, 20),
-                   max_output_tokens=number(env, 'TERM_AGENT_MAX_OUTPUT_TOKENS', 4096, 512, 16384))
+                   max_output_tokens=limits['max_output_tokens'])
 
     def public(self):
         return {'provider': self.provider, 'vision_provider': self.vision_provider,
@@ -116,7 +120,8 @@ class Settings:
                 'native_pdf': PROVIDERS[self.vision_provider]['native_pdf'],
                 'image_input': bool(PROVIDERS[self.vision_provider]['vision']), 'max_calls': self.max_calls,
                 'chunk_chars': self.chunk_chars, 'chunk_units': self.chunk_units, 'max_output_tokens': self.max_output_tokens,
-                'link_batch_size': self.link_batch_size,
+                'link_batch_size': self.link_batch_size, 'run_limit_defaults': DEFAULT_RUN_LIMITS,
+                'run_limit_ranges': RUN_LIMIT_RANGES,
                 'providers': {pid: {'name': info['name'], 'model': info['model'], 'vision_model': info['vision'],
                                    'native_pdf': info['native_pdf'], 'image_input': bool(info['vision']),
                                    **self.key_status.get(pid, {'key_configured': False, 'key_source': 'not configured'})}
