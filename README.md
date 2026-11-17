@@ -9,7 +9,7 @@ Separate text/visual providers, local credentials, model-specific RPM caps, expl
 Use Python 3.12 and Node.js 22.12 or later. From a writable folder:
 
 ```powershell
-git clone --branch feat/groq-ai https://github.com/yshuaiw/protocol-sap-term-agent.git
+git clone https://github.com/yshuaiw/protocol-sap-term-agent.git
 cd protocol-sap-term-agent
 powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
 ```
