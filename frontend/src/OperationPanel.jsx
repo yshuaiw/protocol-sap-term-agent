@@ -39,7 +39,7 @@ export function OperationPanel({onSettled,onActivity}) {
   return <section className="operation-panel" aria-label="LLM operations">
     {operations.length>0&&<><strong>Active LLM operations</strong><p>Only explicit cancellation stops these tasks. Refreshing or closing the page keeps them running. Submitted requests may still consume tokens; spent tokens cannot be recovered.</p></>}
     {operations.map(op=><div className="operation-row" key={op.id}>
-      <span>{names[op.kind]||op.kind} · {op.stage.replaceAll('_',' ')} · {op.status}{op.project_id&&<small>{op.project_name||'Project'} · {op.project_id.slice(0,8)}</small>}</span>
+      <span>{names[op.kind]||op.kind} · {op.stage.replaceAll('_',' ')} · {op.status}{op.project_id&&<small>{op.project_name||'Project'} · {op.project_id.slice(0,8)}</small>}{op.progress?.candidates_total != null && <small>Linking: {op.progress.candidates_completed}/{op.progress.candidates_total} candidates · Index pages {op.progress.index_pages_current_checked||0}/{op.progress.index_pages_current||0} · Cache hits {op.progress.cache_hits||0} · HTTP attempts {op.progress.http_attempts||0}</small>}</span>
       <button disabled={op.status!=='running'} onClick={()=>cancel(op)}>{op.status==='cancelling'?'Cancelling…':op.status==='finishing'?'Saving…':'Cancel LLM operation'}</button>
     </div>)}
     {notice&&<p role="status">{notice}<button aria-label="Dismiss operation notice" onClick={()=>setNotice('')}>×</button></p>}

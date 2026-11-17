@@ -22,9 +22,10 @@ Hook tests initialize one pristine repository per module and copy its complete f
 | Project deletion, stale tabs and confirmation | `browser-project-deletion.cjs` |
 | Document-boundary suggestions and source review | `browser-boundaries.cjs` |
 | Model RPM settings | `browser-rpm.cjs` |
+| Bounded linking, progress and accepted cache replay | `browser-linking.cjs` |
 | Cancellation, cancel/delete and sourced explanations | `browser-cancellation-explanations.cjs` |
 
-Run affected flows. Shared navigation/API/persistence changes need smoke plus all affected flows; a demo release or broad/uncertain changes need all six once. Capture screenshots and check console/page errors; deliberately injected error cases must remain explicitly identified.
+Run affected flows. Shared navigation/API/persistence changes need smoke plus all affected flows; a demo release or broad/uncertain changes need all listed flows once. Capture screenshots and check console/page errors; deliberately injected error cases must remain explicitly identified.
 
 For upload-control language or sidebar layout changes, also run `browser-file-picker.cjs` against the same fixture. It checks English captions in a Chinese browser locale, keyboard/click picker activation, PDF/DOCX selection, busy state, desktop/mobile layout, English project-name validation and import with an empty optional review note. Its cancel-event check is simulated; it does not automate or translate the operating system dialog.
 
@@ -32,7 +33,9 @@ For typography or text-size controls, run `browser-text-size.cjs`. It verifies e
 
 For run-budget or cache-identity changes, run `tests/test_run_budgets.py` and `browser-run-budgets.cjs`, plus the affected existing flows above. They distinguish actual attempts from cache hits and exercise compatible legacy-cache reuse after budget/RPM changes. Do not replay real project misses over a live transport; offline cache probes must prohibit network access.
 
-From the project root, create fixtures with `.venv/Scripts/python.exe scripts/make-fixtures.py`, then start `.venv/Scripts/python.exe scripts/serve-workflow-fixture.py` in a separate terminal. Set `DEMO_URL=http://127.0.0.1:8766` and run `node scripts/<script>`. This fixture supports all six flows with temporary projects/settings, dummy credentials, scripted provider content and blocked external connections. Run cancellation/explanations last because it configures delays; stop the fixture when finished. Never target real projects or the production demo. The older offline fixture lacks these delay controls.
+For linking request changes, use `tests/test_bounded_linking.py` and `browser-linking.cjs`, plus smoke and cancellation flows when shared orchestration changes. The tests cover all index pages/aliases, full evidence ranges, conflicting matches, exact candidate IDs, seven provider envelopes and cache-only legacy replay. Check completed candidates, index/evidence requests and cache/HTTP counters separately. Reset `/api/workflow-fixture` controls between browser scripts that assert request counts; previous scripts may leave simulated calls in that process. See [bounded linking](bounded-linking.md) for limits.
+
+From the project root, create fixtures with `.venv/Scripts/python.exe scripts/make-fixtures.py`, then start `.venv/Scripts/python.exe scripts/serve-workflow-fixture.py` in a separate terminal. Set `DEMO_URL=http://127.0.0.1:8766` and run `node scripts/<script>`. This fixture supports all listed flows with temporary projects/settings, dummy credentials, scripted provider content and blocked external connections. Run cancellation/explanations last because it configures delays; stop the fixture when finished. Never target real projects or the production demo. The older offline fixture lacks these delay controls.
 
 Playwright is separate tooling, resolved through `PLAYWRIGHT_MODULE` or `NODE_PATH`; scripts use installed Edge by default. Screenshots stay under ignored `output/`. `BROWSER_OUTPUT_DIR` applies only to scripts explicitly supporting it.
 

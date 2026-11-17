@@ -24,6 +24,7 @@ class Operation:
         self.ended = False
         self.stage = 'starting'
         self.project_name = ''
+        self.progress = {}
         self.cache = {}
 
     def check(self):
@@ -60,7 +61,8 @@ class Operation:
 
     def public(self):
         return {'id': self.id, 'project_id': self.pid, 'project_name': self.project_name, 'kind': self.kind, 'stage': self.stage,
-                'status': 'cancelling' if self.cancelled.is_set() else 'finishing' if self.finalizing else 'running'}
+                'status': 'cancelling' if self.cancelled.is_set() else 'finishing' if self.finalizing else 'running',
+                'progress': dict(self.progress)}
 
 
 class Operations:
