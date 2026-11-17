@@ -117,7 +117,7 @@ def test_recovery_still_requires_exact_document_evidence(tmp_path, invalid_evide
         generate_registry(project, client, {})
         assert project['mentions'] and len(project['concepts']) == 1
         assert all(m['text'] == 'Arm A' for m in project['mentions'])
-        assert {r['stage'] for r in client.records} == {'discovery', 'linking'}
+        assert {r['stage'] for r in client.records} == {'discovery', 'linking_create'}
         assert client.records[0]['format_recovery'] is True
 
 

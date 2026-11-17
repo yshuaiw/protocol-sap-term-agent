@@ -100,7 +100,7 @@ class ModelClient:
         # Scripted contract fixtures skip wall-clock waits unless explicitly testing admission.
         self.limiter = limiter if limiter is not None else (None if isinstance(transport, httpx.MockTransport) else REQUEST_LIMITER)
 
-    def complete(self, stage, payload, schema, images=None, pdf=None):
+    def complete(self, stage, payload, schema, images=None, pdf=None, cache_only=False):
         check()
         operation = CURRENT.get()
         if operation:
@@ -127,9 +127,13 @@ class ModelClient:
             raise ModelError('This adapter does not support image input; select a visual provider.')
         text = json.dumps(payload, ensure_ascii=False)
         if len(text) > 100000:
+            if cache_only:
+                return None
             raise ModelError('Model payload is too large. Reduce batch size; content was not silently truncated.')
         simulation = isinstance(self.transport, httpx.MockTransport)
         prompt_version = {'discovery': 'discovery-v5-explicit-terms', 'linking': 'linking-v2-compact-refs'}.get(stage, 'prompt-v1')
+        if stage in ('linking_scan', 'linking_verify', 'linking_create'):
+            prompt_version = 'linking-v3-bounded-index'
         digest, candidates = self._cache_identity.paths([stage, provider, model, settings.provenance(), schema.model_json_schema(), payload, images or [], pdf, prompt_version, simulation, ADAPTER_VERSION])
         cache = self.cache_dir / (digest + '.json') if self.cache_dir else None
         for candidate in candidates:
@@ -143,6 +147,8 @@ class ModelClient:
             self.check_credentials(result)
             self.records.append({'stage': stage, 'provider': provider, 'model': model, 'configuration': settings.provenance(), 'request_hash': candidate.stem, 'cached': True, 'usage': {}, 'simulation': simulation})
             return result.model_dump()
+        if cache_only:
+            return None
         prompt = SYSTEM + '\nTASK: ' + TASKS[stage] + '\nJSON schema: ' + json.dumps(schema.model_json_schema())
         output_tokens = min(settings.max_output_tokens, {'boundary_scan': 2048, 'boundary_vision': 3072}.get(stage, settings.max_output_tokens))
         path, headers, body, format_name = request_spec(provider, model, key, stage, prompt, text,

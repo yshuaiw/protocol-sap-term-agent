@@ -180,7 +180,7 @@ def test_ai_api_contract_roundtrip_without_external_calls(app):
     assert response.status_code == 200, response.text
     p = response.json()
     assert p['engine'] == 'groq-ai-v1'
-    assert {r['stage'] for r in p['ai_runs'][-1]['calls']} == {'discovery', 'linking', 'explanation_scan', 'explanation_relation'}
+    assert {r['stage'] for r in p['ai_runs'][-1]['calls']} == {'discovery', 'linking_scan', 'linking_verify', 'linking_create', 'explanation_scan', 'explanation_relation'}
     assert p['ai_runs'][-1]['chunks_completed'] == p['ai_runs'][-1]['chunks_total']
     assert len(p['mentions']) == 10 and len(p['concepts']) == 1
     cid = p['concepts'][0]['id']

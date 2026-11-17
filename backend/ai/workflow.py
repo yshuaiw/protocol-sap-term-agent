@@ -3,7 +3,7 @@ import hashlib
 import json
 
 from .client import ModelError
-from .schemas import Extraction, Links, DiscoveryRepairs
+from .schemas import Extraction, DiscoveryRepairs
 
 
 def stable_id(*parts):
@@ -139,62 +139,8 @@ def generate_registry(project, client, run):
         run.update(chunks_completed=index + 1, candidates=len(found))
         client.accept()
     candidates = list(found.values())
-    concepts, mentions, ledger = {}, [], []
-    for group_index, group in enumerate(batches(candidates, client.settings.link_batch_size)):
-        candidate_refs = {f'C{i + 1}': candidate['id'] for i, candidate in enumerate(group)}
-        ledger_refs = {f'L{i + 1}': concept['id'] for i, concept in enumerate(ledger)}
-        reverse_candidates = {value: key for key, value in candidate_refs.items()}
-        reverse_ledger = {value: key for key, value in ledger_refs.items()}
-        payload = {'ledger': [{**concept, 'id': reverse_ledger[concept['id']]} for concept in ledger],
-                   'candidates': [{**{k: v for k, v in candidate.items() if k not in ('id', 'doc_id', 'block_id', 'start', 'end')},
-                                   'id': reverse_candidates[candidate['id']]} for candidate in group]}
-        response = client.complete('linking', payload, Links)
-        assignments = response['assignments']
-        ids = [a['candidate_id'] for a in assignments]
-        expected = set(candidate_refs)
-        if len(ids) != len(set(ids)) or set(ids) != expected:
-            raise ModelError('Semantic linking omitted, duplicated or invented candidate IDs.')
-        assignments = [{**item, 'candidate_id': candidate_refs[item['candidate_id']],
-                        'group_id': ledger_refs.get(item['group_id'], item['group_id'])} for item in assignments]
-        group_map = {}
-        candidate_map = {c['id']: c for c in group}
-        for item in assignments:
-            raw = item['group_id']
-            if item['ambiguous']:
-                cid = stable_id('ambiguous', item['candidate_id'])
-            elif raw in concepts:
-                cid = raw
-            elif raw.startswith('new:') and len(raw) <= 150:
-                cid = group_map.setdefault(raw, stable_id(project['id'], group_index, raw))
-            else:
-                cid = stable_id('unknown-link', item['candidate_id'])
-                item = {**item, 'ambiguous': True,
-                        'reason': 'Model returned an unknown concept reference; kept separate for reviewer association. ' + item['reason']}
-                run.setdefault('linking_conflicts', []).append(item['candidate_id'])
-            if cid in concepts and (concepts[cid]['category'] != item['category'] or
-                                    concepts[cid]['name'] != item['canonical_name']):
-                # Abstain rather than overwrite the ledger or merge conflicting model identities.
-                cid = stable_id('link-conflict', item['candidate_id'])
-                item = {**item, 'ambiguous': True,
-                        'reason': 'Model group ID conflicts with its name/category; kept separate for reviewer association. ' + item['reason']}
-                run.setdefault('linking_conflicts', []).append(item['candidate_id'])
-            candidate = candidate_map[item['candidate_id']]
-            concept = concepts.setdefault(cid, {'id': cid, 'name': item['canonical_name'], 'category': item['category'],
-                'definition': item['definition'], 'aliases': [], 'confirmed': False,
-                'evidence': f"{candidate['role']} {candidate['page']}: {candidate['context']}",
-                'note': 'Model grouping is uncertain; reviewer association required.' if item['ambiguous'] else
-                        'Model-supported proposal; human evidence review is required.', 'origin': client.settings.provider})
-            if candidate['text'] != concept['name'] and candidate['text'] not in concept['aliases']:
-                concept['aliases'].append(candidate['text'])
-            mentions.append({k: candidate[k] for k in ('id', 'doc_id', 'role', 'page', 'region', 'block_id',
-                                                      'start', 'end', 'text', 'context', 'evidence_kind')} | {
-                'concept_id': cid, 'candidates': [cid], 'status': 'unresolved', 'manual': False,
-                'model_link_status': 'ambiguous' if item['ambiguous'] else 'supported',
-                'model_reason': item['reason'], 'origin': client.settings.provider})
-        ledger = [{'id': c['id'], 'name': c['name'], 'category': c['category'], 'definition': c['definition'],
-                   'aliases': c['aliases'], 'evidence': c['evidence']} for c in concepts.values()]
-        client.accept()
-    project['concepts'], project['mentions'] = list(concepts.values()), mentions
+    from .linking import link_registry
+    link_registry(project, candidates, client, run)
     project['engine'] = client.settings.provider + '-ai-v1'
-    run.update(status='completed', concepts=len(concepts), mentions=len(mentions),
+    run.update(status='completed', concepts=len(project['concepts']), mentions=len(project['mentions']),
                blocks_scanned=len(lookup), coverage_notice='All selected text blocks submitted. Semantic recall is not certified. Visual transcriptions and unsupported media require review.')
