@@ -30,6 +30,8 @@ For upload-control language or sidebar layout changes, also run `browser-file-pi
 
 For typography or text-size controls, run `browser-text-size.cjs`. It verifies exact Normal/Large sizes, browser persistence and denied-storage fallback, draft/approval retention, tables/dialogs and desktop/tablet/mobile layouts. Its explicit active-task check uses a delayed scripted provider and cancels only its temporary task; display toggles must add no API mutations or provider attempts. No live API calls are needed.
 
+For run-budget or cache-identity changes, run `tests/test_run_budgets.py` and `browser-run-budgets.cjs`, plus the affected existing flows above. They distinguish actual attempts from cache hits and exercise compatible legacy-cache reuse after budget/RPM changes. Do not replay real project misses over a live transport; offline cache probes must prohibit network access.
+
 From the project root, create fixtures with `.venv/Scripts/python.exe scripts/make-fixtures.py`, then start `.venv/Scripts/python.exe scripts/serve-workflow-fixture.py` in a separate terminal. Set `DEMO_URL=http://127.0.0.1:8766` and run `node scripts/<script>`. This fixture supports all six flows with temporary projects/settings, dummy credentials, scripted provider content and blocked external connections. Run cancellation/explanations last because it configures delays; stop the fixture when finished. Never target real projects or the production demo. The older offline fixture lacks these delay controls.
 
 Playwright is separate tooling, resolved through `PLAYWRIGHT_MODULE` or `NODE_PATH`; scripts use installed Edge by default. Screenshots stay under ignored `output/`. `BROWSER_OUTPUT_DIR` applies only to scripts explicitly supporting it.
