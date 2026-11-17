@@ -29,6 +29,8 @@ powershell -ExecutionPolicy Bypass -File scripts/start.ps1
 
 Open **http://127.0.0.1:8765**. Stop the previous server with Ctrl+C before changing mode. Importing files, loading projects and refreshing settings do not call models. **AI register generation, boundary suggestions, request interpretation, AI replacement review and semantic audit** explicitly send relevant document content to the selected providers.
 
+Use **Text size → Normal / Large** at the upper right for classroom presentation. Large text applies throughout the workspace, including evidence and dialogs. The choice stays in this browser for this site; switching preserves drafts, approvals and running tasks. It does not call models or change original files, project history, API settings or exported Word text sizes. Long content may wrap and tables may scroll horizontally.
+
 ## Provider adapters and verification
 
 Set independent provider/model RPM caps in **API settings → Request rate limits**; see [request pacing](guides/request-rate-limits.md). All model stages and retries share these caps. Other quotas and network timeouts remain separate.

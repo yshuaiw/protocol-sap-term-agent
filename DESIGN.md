@@ -11,3 +11,4 @@
 - Show English file-picker buttons and selection status inside the page; native file input captions follow browser language and can interrupt the English demo. Keep the operating system dialog native.
 - Keep the desktop sidebar wide enough to read saved project names (288px); align the main content offset with it and retain the compact/mobile breakpoints.
 - Keep import validation in English with visible inline errors rather than browser-localized required-field bubbles. Project names are required; free-text version/range notes are optional, while source/range review still requires explicit confirmation.
+- Provide Normal/Large text controls at the upper right for classroom presentation. Normal uses 12/14/18/26px and Large 16/18/24/34px through shared tokens; include auxiliary evidence and dialogs. Allow wrapping/local table scrolling and retain drafts and approvals when switching. Remember only this browser's display preference.

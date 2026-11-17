@@ -11,6 +11,7 @@ import {ApiSettings} from './ApiSettings';
 import {projectPath} from './paths';
 import {ProjectDeleteDialog} from './ProjectDeleteDialog';
 import {OperationPanel} from './OperationPanel';
+import {TextSizeControl} from './TextSizeControl';
 
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -68,7 +69,13 @@ function App() {
       <div className="sidebar-bottom">Local workspace · v0.2<br/>AI services · explicit actions</div>
     </aside>
     <main aria-busy={busy}>
-      <header className="topbar"><div>{settingsOpen?'API settings':importing?'New project':project?.name||'Your workspace'}</div>{project&&!importing&&!settingsOpen&&<span>Revision {project.revision}<button onClick={()=>run(()=>api(projectPath(project)))} disabled={busy}>Reload</button></span>}</header>
+      <header className="topbar">
+        <div className="topbar-title">{settingsOpen?'API settings':importing?'New project':project?.name||'Your workspace'}</div>
+        <div className="topbar-actions">
+          {project&&!importing&&!settingsOpen&&<span className="project-revision">Revision {project.revision}<button onClick={()=>run(()=>api(projectPath(project)))} disabled={busy}>Reload</button></span>}
+          <TextSizeControl/>
+        </div>
+      </header>
       {error&&<div role="alert" className="alert error">{error}<button onClick={()=>setError('')} aria-label="Dismiss error">×</button></div>}
       {notice&&<div role="status" className="alert success">{notice}</div>}
       <OperationPanel onSettled={operationSettled} onActivity={setActiveOperations}/>
