@@ -104,6 +104,6 @@ Real synthetic Groq checks are separate from offline/browser tests and default t
 
 Projects persist in `data/projects/`, independent of browser sessions and code Git history. `TERM_AGENT_DATA` can choose another folder. Run one backend process; multiple workers sharing storage are unsupported. Teammates should create their own environments and import a project ZIP, not copy `.venv`.
 
-macOS scripts (`bash scripts/setup.sh`, `bash scripts/start.sh --offline`) are supplied but untested on macOS. The teammate's actual computer is also untested. Local `docs/` and Presentation text files are intentionally excluded from source checkouts and are not needed to run the app.
+macOS scripts (`bash scripts/setup.sh`, `bash scripts/start.sh --offline`) are supplied but untested on macOS. The teammate's actual computer is also untested.
 
 Sourced definitions and review: [Term explanations](guides/term-explanations.md).
