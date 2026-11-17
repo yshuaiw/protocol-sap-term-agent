@@ -23,3 +23,4 @@
 .explanation-claim label { display: block; margin: 12px 0; }
 .explanation-claim textarea, .explanation-claim select { width: 100%; }
 @media (max-width: 600px) { .operation-panel { margin: 12px; padding: 12px; } .operation-row { align-items: stretch; flex-direction: column; } .explanation-actions, .explanations { padding: 12px; } }
+.field-error{color:#8c2e20;font-size:12px;margin:7px 0 0}

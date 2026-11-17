@@ -117,10 +117,10 @@ def projects():
 
 
 @app.post('/api/projects')
-async def create(name: str = Form(...), selections: str = Form(...), version_note: str = Form(...),
+async def create(name: str = Form(...), selections: str = Form(...), version_note: str = Form(''),
                  files: list[UploadFile] = File(...), engine: str = Form('ai')):
-    if not name.strip() or len(name) > 200 or not version_note.strip():
-        raise ValueError('Name and a reviewed document/version note are required.')
+    if not name.strip() or len(name) > 200:
+        raise ValueError('Enter a project name of 1 to 200 characters.')
     try:
         choices = json.loads(selections)
     except json.JSONDecodeError as exc:

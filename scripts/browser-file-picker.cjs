@@ -12,6 +12,8 @@ const assert = require('node:assert/strict');
   try {
     const page = await browser.newPage({locale: 'zh-CN', viewport: {width: 1440, height: 1000}});
     const errors = [];
+    let imports = 0;
+    page.on('request', r => {if (new URL(r.url()).pathname === '/api/projects' && r.method() === 'POST') imports++;});
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => {if (m.type() === 'error') errors.push(m.text());});
     const fixture = await page.request.get(base + '/api/offline-fixture');
@@ -78,8 +80,38 @@ const assert = require('node:assert/strict');
     await fits();
     const box = await names.boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= 390, 'Long filenames stay inside the mobile viewport');
+
+    const projectName = page.getByLabel('Project name', {exact: true});
+    const note = page.getByLabel('Version and boundary review note');
+    await projectName.focus();
+    await page.keyboard.press('Tab');
+    await shot('07-name-validation');
+    await page.getByRole('alert').filter({hasText: 'Enter a project name.'}).waitFor({timeout: 2000});
+    assert.equal(await projectName.evaluate(el => el.validationMessage), '', 'No localized native required tooltip');
+    assert.equal(await note.evaluate(el => el.validationMessage), '', 'Optional note has no required tooltip');
+    await page.getByRole('checkbox').check();
+    const submit = page.getByRole('button', {name: 'Import and save originals', exact: true});
+    await submit.click();
+    assert.equal(imports, 0, 'Empty project name never reaches the server');
+    assert.equal(await projectName.evaluate(el => el === document.activeElement), true);
+    await projectName.fill('   ');
+    await submit.click();
+    assert.equal(imports, 0, 'Whitespace-only name never reaches the server');
+    await projectName.fill('Optional review note ' + Date.now());
+    assert.equal(await note.inputValue(), '');
+    assert.equal(await submit.isEnabled(), true, 'A blank optional note does not block import');
+    const saved = page.waitForResponse(r => new URL(r.url()).pathname === '/api/projects' && r.request().method() === 'POST');
+    await submit.click();
+    const response = await saved;
+    assert.equal(response.status(), 200);
+    assert.equal((await response.json()).version_note, '');
+    await page.getByRole('heading', {name: 'Terminology register', exact: true}).waitFor();
+    await page.setViewportSize({width: 1440, height: 1000});
+    await shot('08-empty-note-imported');
+    const calls = await (await page.request.get(base + '/api/workflow-fixture')).json();
+    assert.deepEqual(calls.calls, [], 'Import and validation make no model calls');
     assert.deepEqual(errors, [], 'No console or page errors');
-    console.log('PASS: English control in zh-CN, keyboard/click picker, PDF and mixed PDF/DOCX, cancel event retention, busy state and desktop/mobile layout. No live calls; OS dialog language is outside this check.');
+    console.log('PASS: English control/inline validation in zh-CN, keyboard/click picker, mixed inputs, busy/mobile layout, name guard and empty-note import. No model calls; cancel event simulated and OS dialog language outside this check.');
   } finally {
     await browser.close();
   }

@@ -81,6 +81,30 @@ def test_import_scans_all_regions_and_persists(client):
     main.store.validate_sources(fresh)
 
 
+@pytest.mark.parametrize('note,expected', [(None, ''), ('', ''), ('   ', ''), (' Version 1 covers checked. ', 'Version 1 covers checked.')])
+def test_import_allows_optional_review_note(client, note, expected):
+    data = {'name': 'Optional note', 'selections': json.dumps([
+        {'role': role, 'file_index': i, 'start': 1, 'end': 1}
+        for i, role in enumerate(('Protocol', 'SAP'))])}
+    if note is not None:
+        data['version_note'] = note
+    response = client.post('/api/projects', data=data, files=[
+        ('files', (f'{role}.pdf', make_pdf(role), 'application/pdf')) for role in ('Protocol', 'SAP')])
+    assert response.status_code == 200, response.text
+    project = response.json()
+    assert project['version_note'] == expected
+    assert main.store.load(project['id'])['version_note'] == expected
+    assert project['engine'] == 'pending-ai' and project['ai_runs'] == []
+
+
+@pytest.mark.parametrize('name', ['   ', 'x' * 201])
+def test_import_optional_note_still_requires_valid_name(client, name):
+    response = client.post('/api/projects', data={'name': name, 'selections': '[]'},
+                           files={'files': ('Protocol.pdf', make_pdf(), 'application/pdf')})
+    assert response.status_code == 400 and 'project name' in response.json()['detail']
+    assert client.get('/api/projects').json() == []
+
+
 def test_registry_changes_do_not_change_documents(client):
     p = create(client)
     before = p['documents']

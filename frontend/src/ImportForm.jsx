@@ -5,11 +5,13 @@ import {boundaryNotice, rangesValid} from './boundaryState';
 
 export function ImportForm({run, busy}) {
   const fileInput = useRef(null);
+  const nameInput = useRef(null);
   const [files, setFiles] = useState([]), [info, setInfo] = useState([]);
   const [name, setName] = useState(''), [selections, setSelections] = useState([]);
   const [note, setNote] = useState(''), [checked, setChecked] = useState(false);
   const [engine, setEngine] = useState('ai');
   const [suggestionNotice,setSuggestionNotice]=useState('');
+  const [nameError, setNameError] = useState('');
   async function choose(event) {
     const selected = Array.from(event.target.files);
     setFiles(selected); setInfo([]); setSelections([]); setChecked(false);setSuggestionNotice('');
@@ -50,7 +52,13 @@ export function ImportForm({run, busy}) {
   }
   async function submit(event) {
     event.preventDefault();
-    if(!rangesValid(selections,info))return;
+    if (busy) return;
+    if (!name.trim()) {
+      setNameError('Enter a project name.');
+      nameInput.current.focus();
+      return;
+    }
+    if(!checked || !rangesValid(selections,info))return;
     const form = new FormData();
     form.append('name', name); form.append('version_note', note); form.append('engine', engine);
     form.append('selections', JSON.stringify(selections));
@@ -60,8 +68,13 @@ export function ImportForm({run, busy}) {
   }
   return <div className="content import-content">
     <h1>Import documents</h1><p className="lead">Use independent Protocol and SAP files in PDF or DOCX format, including a mixed pair. A combined PDF can be split by page range.</p>
-    <form onSubmit={submit} className="import-form">
-      <label>Project name<input value={name} onChange={e => setName(e.target.value)} required maxLength={200}/></label>
+    <form onSubmit={submit} className="import-form" noValidate>
+      <div>
+        <label>Project name<input ref={nameInput} value={name} onChange={e => {setName(e.target.value); setNameError('');}}
+          onBlur={() => setNameError(name.trim() ? '' : 'Enter a project name.')} aria-required="true"
+          aria-invalid={!!nameError} aria-describedby={nameError ? 'project-name-error' : undefined} maxLength={200}/></label>
+        {nameError && <p id="project-name-error" role="alert" className="field-error">{nameError}</p>}
+      </div>
       <div className="upload-area">
         <strong>Select PDF or DOCX files</strong>
         <input ref={fileInput} aria-label="Select PDF or DOCX files" type="file" multiple accept=".pdf,.docx" onChange={choose} disabled={busy} hidden/>
@@ -88,11 +101,13 @@ export function ImportForm({run, busy}) {
           <label>Last unit<input type="number" min={s.start} max={info[s.file_index].pages} value={s.end} disabled={info[s.file_index].format === 'docx'} onChange={e => change(i, 'end', e.target.value)}/></label>
         </div>)}
         {!rangesValid(selections,info) && <p className="callout" role="status">Choose valid, nonoverlapping Protocol and SAP ranges before importing. A combined file initially uses the whole file for both roles; review and apply suggestions or edit the ranges manually.</p>}
-        <label>Version and boundary review note<textarea value={note} onChange={e => setNote(e.target.value)} required/></label>
+        <label>Version and boundary review note (optional)<textarea value={note} onChange={e => setNote(e.target.value)}/>
+          <span className="muted">Record version details or reasons for the selected ranges if useful.</span>
+        </label>
         <label>Register workflow<select aria-label="Register workflow" value={engine} onChange={e => setEngine(e.target.value)}><option value="ai">AI generation after import</option><option value="rules">Explicit rule baseline — no AI</option></select></label>
         <label className="checkbox"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)}/>I checked independent documents, selected ranges and version compatibility.</label>
         <div className="callout">Original PDF and DOCX inputs are retained unchanged. Every approved edit is written to a new Word file. Model transcriptions and complex structures still require source review.</div>
-        <button className="primary" disabled={busy || !checked || !name.trim() || !note.trim() || !rangesValid(selections,info)}>Import and save originals</button>
+        <button className="primary" disabled={busy || !checked || !rangesValid(selections,info)}>Import and save originals</button>
       </>}
     </form>
   </div>;
